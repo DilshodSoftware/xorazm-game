@@ -36,6 +36,22 @@ const TILE_CREAM := Color("e2d5b8")
 const CONCRETE := Color("b3ada0")
 const ROOF_GRAY := Color("8d8478")
 
+## --- Tandirchi uylari (4-bosqich) ---
+## Zamonaviy Xorazm uylari asosan pishgan g'ishtdan, lekin ko'pchilik
+## g'ishtni tashqi tomondan surib yopadi — shuning uchun ko'chadan
+## yalang'och g'isht ko'rinmaydi, faqat rangli suvaloq ko'rinadi.
+const BRICK_NEW := Color("b5825a")       ## Yangi (hali surilmagan) g'isht
+const PLASTER_NEW := Color("cfc4ab")     ## Yangi suvaloq — issiq oq-sariq
+const PLASTER_WARM := Color("d8c9a8")   ## Uzoqdan quyosh tegib rangini o'zgartiradi
+const ROOF_DECK := Color("9a8f7e")       ## Shift — ustiga yopilgan chanoq
+const WOOD_DARK := Color("4a3524")       ## Eshik va to'sh — qora yog'och
+const WOOD := Color("7a5a38")            ## Tarona (ustun), yalang'och
+const WOOD_LIGHT := Color("9c7b4e")
+const GATE_METAL := Color("3f4245")      ## Temir panjara, darvoza
+const GLASS := Color("2b3a42")
+const LEAF_DARK := Color("4d6b30")       ## Anor bargi
+const LEAF_LIGHT := Color("6d8c3f")
+
 # --- Tabiat ---
 const TUGAY := Color("5e7a3c")          ## To'qog'oy: terak, tol
 const TUGAY_LIGHT := Color("7a8b4e")     ## Yulg'un (tamarix)
@@ -49,6 +65,12 @@ const ROAD_LINE_WHITE := Color("e6e2d8")
 const ROAD_LINE_YELLOW := Color("d4a93c")
 const CONCRETE_ROAD := Color("7d786f")
 const SOIL_ROAD := Color("9c8256")       ## Xorazmning qumloy yo'llari
+## Mahalla ko'chalari: siqilgan, namlangan yer. Asosiy qumdan
+## sezilarli farq qilishi SHART — aks holda ko'cha yerdan
+## ajratib bo'lmaydi va mahalla "binalar yalang'och turibdi"dek
+## ko'rinadi.
+const STREET_EARTH := Color("6f5d3c")
+const STREET_EDGE := Color("5c4d31")
 
 # --- Ranglar (mashinalar) ---
 ## Real hayotdagidek: O'zbekistonda asosan oq va kuva mashinalar.

@@ -33,6 +33,9 @@ loyiha bitta fayl bilan ishga tushadi.
 # Yo'l tarmog'ining tekshiruvi (15 ta test)
 ~/Applications/godot --headless --path . -- --test-roads
 
+# Tandirchi binolarining tekshiruvi (14 ta test)
+~/Applications/godot --headless --path . -- --test-buildings
+
 # Butun orolning tekis rasm xaritasi (GPU'siz)
 ~/Applications/godot --headless --path . -- --terrainmap /tmp/map.png
 
@@ -49,6 +52,9 @@ loyiha bitta fayl bilan ishga tushadi.
 
 # Nuqtaning relyefi, suv holati va eng yaqin yo'li
 ~/Applications/godot --headless --path . -- --probe "-745,180;-745,812"
+
+# Bitta uyni qurib, ko'chadan ko'rish (uyni tuzatish uchun)
+~/Applications/godot --path . -- --testhouse /tmp/uy.png
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
@@ -113,7 +119,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 1 | O'yinchi, FPS kamera, harakat, egilish, sakrash | ✅ |
 | 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ✅ |
 | 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ✅ |
-| 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ⬜ |
+| 4 | Tandirchi mahallasi va o'yinchi uyining ichi | 🚧 |
 | 5 | O'zbek mashinalari + haydash fizikasi | ⬜ |
 | 6 | AI yo'l harakati, marshrutka, piyodalar | ⬜ |
 | 7 | Urganch: baza, Al-Xorazmiy, Avesto bog'i, stansiya | ⬜ |
@@ -201,12 +207,19 @@ src/world/         # terrain_gen.gd     — BALANDLIKNING YAGONA MANBA
                    # debug_props.gd     (vaqtinchalik, 4-bosqichda o'chadi)
 src/world/roads/   # road_network.gd   — YO'L TARMOG'I: geometriya, tekislash
                    # road_builder.gd    — ko'rinadigan yo'l, chiziq, ko'prik
+src/buildings/     # building_kit.gd   — Xorazm uyining qismlari (eshik, to'sh,
+                   #                      tarona, shift, ravoq, darvoza)
+                   # courtyard_house.gd — bitta hovli uy
+                   # tandirchi.gd       — KO'CHALAR VA UY JOYLARI (ma'lumot)
+                   # building_manager.gd— binolarni chunk'lar bo'yicha yuklash
+src/world/tree_kit.gd  — anor, nonak, qarag'ay, sharak, terak
 src/player/        # player.gd, camera_rig.gd
 src/main.gd        # o'yin ildizi
 scenes/            # main.tscn, player/player.tscn
 tools/             # player_selftest.gd — 27 ta test
                    # terrain_selftest.gd — 45 ta test
                    # road_selftest.gd   — 15 ta test
+                   # building_selftest.gd — 14 ta test
                    # terrain_map.gd     — rasm xaritasi chizuvchisi
 ```
 
@@ -218,6 +231,7 @@ Har bir bosqichda avtomatik tekshiruv ishlaydi:
 ~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
 ~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
 ~/Applications/godot --headless --path . -- --test-roads     # yo'llar (15)
+~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (14)
 ~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
 ```
 

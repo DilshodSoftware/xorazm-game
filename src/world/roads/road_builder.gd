@@ -51,8 +51,8 @@ static func build(root: Node3D) -> Node3D:
 	group.name = "Yo'llar"
 	root.add_child(group)
 
-	var asphalt := _SurfaceBuffer.new()
-	var lines := _SurfaceBuffer.new()
+	var asphalt := MeshBuilder.new()
+	var lines := MeshBuilder.new()
 
 	for road: Dictionary in RoadNetwork.roads():
 		var kind: int = road["tur"]
@@ -66,8 +66,8 @@ static func build(root: Node3D) -> Node3D:
 	# --- Ko'priklar (alohida, chunki collision ham bor) ---
 	_build_bridges(group)
 
-	asphalt.commit(group, "Asfalt", 0.0)
-	lines.commit(group, "Chiziqlar", 0.02)
+	asphalt.commit(group, "Asfalt")
+	lines.commit(group, "Chiziqlar")
 	return group
 
 
@@ -77,7 +77,7 @@ static func build(root: Node3D) -> Node3D:
 ## DIQQAT: barcha nuqtalar Vector3 (baldik bilan) saqlanadi. Avval Vector2
 ## saqlaganimizda balandlik umuman ishlatilmasdi va butun yo'l y = 0 da
 ## yotib qolardi — yer ostida.
-static func _add_paved(asphalt: _SurfaceBuffer, road: Dictionary, kind: int) -> void:
+static func _add_paved(asphalt: MeshBuilder, road: Dictionary, kind: int) -> void:
 	var points: PackedVector2Array = road["nuqta"]
 	var half: float = RoadNetwork.HALF_WIDTH[kind]
 	var edge_colour: Color = (
@@ -116,7 +116,7 @@ static func _add_paved(asphalt: _SurfaceBuffer, road: Dictionary, kind: int) -> 
 
 
 ## Bitta qadamdagi asfalt yuzasi.
-static func _pave_strip(buffer: _SurfaceBuffer, prev: Dictionary, cur: Dictionary,
+static func _pave_strip(buffer: MeshBuilder, prev: Dictionary, cur: Dictionary,
 		edge_colour: Color) -> void:
 	# Asfalt yuzasi: markazdan ikki yonga
 	_quad(buffer, prev["chap_ich"], prev["markaz"], cur["markaz"], cur["chap_ich"],
@@ -141,7 +141,7 @@ static func _pave_strip(buffer: _SurfaceBuffer, prev: Dictionary, cur: Dictionar
 ##     `clock` funksiya ichida nolga qaytarilardi — `_add_paved` dagi
 ##     `dash_clock` esa o'smayverardi va chiziq bir marta chizilib,
 ##     butun yo'lda yo'q bo'lib qolardi.
-static func _add_markings(lines: _SurfaceBuffer, road: Dictionary, kind: int) -> void:
+static func _add_markings(lines: MeshBuilder, road: Dictionary, kind: int) -> void:
 	var points: PackedVector2Array = road["nuqta"]
 	var half: float = RoadNetwork.HALF_WIDTH[kind]
 	var centre_colour: Color = (
@@ -214,7 +214,7 @@ static func _shift(sample: Dictionary, offset: float) -> Vector3:
 
 
 ## Qishloq yo'li — qum, chiziqsiz, yonlarisiz.
-static func _add_dirt(buffer: _SurfaceBuffer, road: Dictionary) -> void:
+static func _add_dirt(buffer: MeshBuilder, road: Dictionary) -> void:
 	var points: PackedVector2Array = road["nuqta"]
 	var half: float = RoadNetwork.HALF_WIDTH[road["tur"]]
 
@@ -304,7 +304,7 @@ static func _build_one_bridge(root: Node3D, points: PackedVector2Array,
 	var origin := _point_at(points, (start + finish) * 0.5)
 	var offset := Vector3(origin.x, 0.0, origin.y)
 
-	var surface := _SurfaceBuffer.new()
+	var surface := MeshBuilder.new()
 	var steps := maxi(2, int(ceil((finish - start) / 6.0)))
 
 	var previous: Dictionary = {}
@@ -362,32 +362,18 @@ static func _build_one_bridge(root: Node3D, points: PackedVector2Array,
 	node.position = Vector3(origin.x, deck_y, origin.y)
 	root.add_child(node)
 
-	var built: Node3D = surface.commit(node, "Ustiq", 0.0)
+	var built: Node3D = surface.commit(node, "Ustiq")
 	if built == null:
 		node.queue_free()
 		return
 
-	# Collision: ConcavePolygonShape3D uchburchak NUQTALARINI talab qiladi
-	var faces := PackedVector3Array()
-	var verts: PackedVector3Array = surface.vertices
-	var idx: PackedInt32Array = surface.triangles
-	for i in range(0, idx.size(), 3):
-		faces.append(verts[idx[i]])
-		faces.append(verts[idx[i + 1]])
-		faces.append(verts[idx[i + 2]])
-
-
-	var shape := ConcavePolygonShape3D.new()
-	shape.set_faces(faces)
-	var col := CollisionShape3D.new()
-	col.shape = shape
-
-	var body := StaticBody3D.new()
-	body.name = "Kolpasi"
-	body.collision_layer = PhysicsLayers.WORLD
-	body.collision_mask = 0
-	body.add_child(col)
-	node.add_child(body)
+	# Collision. Ko'prik ushigining YUQORI yuzasi va yon devorlari yetarli —
+	# ichki va pastki yuzalarni yig'masligimiz mumkin (ular ko'rinmaydi,
+	# o'yinchi orasidan o'tmaydi). Lekin bitta muhim nuqta bor: pastki
+	# yuzani HAM qo'shish kerak, aks holda suv ostidan qaragan dastur
+	# devordan o'tib keta oladi.
+	surface.want_collision = true
+	surface.commit_collision(node, "Kolpasi")
 
 
 ## Ko'prik to'sig'i — ikki yonda beton devor.
@@ -396,7 +382,7 @@ static func _build_one_bridge(root: Node3D, points: PackedVector2Array,
 ## doimiy Vector3(-1,0,0) deb olganmiz — natijada ko'prik yo'lda
 ## diagonal turgan bo'lsa, to'siqlar yon tomonga uchib chiqib, tish
 ##simon shakl hosil qilardi.
-static func _parapet(buffer: _SurfaceBuffer,
+static func _parapet(buffer: MeshBuilder,
 		pl: Vector3, pr: Vector3, cl: Vector3, cr: Vector3,
 		prev_normal: Vector2, cur_normal: Vector2, height: float) -> void:
 	var thickness := 0.24
@@ -460,19 +446,14 @@ static func _normal_at(points: PackedVector2Array, distance: float) -> Vector2:
 # --------------------------------------------------------------- GEOMETRIYA
 
 ## Bitta kvadrat (ikki uchburchak), har uchi rangli.
-static func _quad(buffer: _SurfaceBuffer, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+static func _quad(buffer: MeshBuilder, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 		colour: Color, lift: float) -> void:
-	var up := Vector3.UP * lift
-	var verts: Array[Vector3] = [a + up, b + up, c + up, d + up]
-	var base: int = buffer.vertex_count()
-	for v: Vector3 in verts:
-		buffer.add_vertex(v, colour)
-	buffer.add_triangle(base, base + 1, base + 2)
-	buffer.add_triangle(base, base + 2, base + 3)
+	buffer.add_quad(a + Vector3.UP * lift, b + Vector3.UP * lift,
+		c + Vector3.UP * lift, d + Vector3.UP * lift, colour, Vector3.UP, false)
 
 
 ## Tor chiziq: ikki nuqta orasida. Nuqtalar Vector3 (balandlik bilan).
-static func _ribbon(buffer: _SurfaceBuffer, a: Vector3, b: Vector3,
+static func _ribbon(buffer: MeshBuilder, a: Vector3, b: Vector3,
 		colour: Color, width: float) -> void:
 	var direction := b - a
 	direction.y = 0.0
@@ -492,52 +473,3 @@ static func _ribbon(buffer: _SurfaceBuffer, a: Vector3, b: Vector3,
 	# (asfalt esa ko'rinadi) — chalkashlik chiqadi.
 	_quad(buffer, a + offset, a - offset, b - offset, b + offset,
 		colour, LINE_LIFT)
-
-
-## Mesh yig'ish uchun oddiy bufer.
-class _SurfaceBuffer extends RefCounted:
-	var vertices := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var colours := PackedColorArray()
-	var triangles := PackedInt32Array()
-
-	## `count` nomi `Object` bilan to'qnashishi mumkin — aniq nom
-	## ishlatamiz.
-	func vertex_count() -> int:
-		return vertices.size()
-
-	func add_vertex(position: Vector3, colour: Color) -> void:
-		vertices.append(position)
-		normals.append(Vector3.UP)
-		colours.append(colour)
-
-	func add_triangle(a: int, b: int, c: int) -> void:
-		triangles.append(a)
-		triangles.append(b)
-		triangles.append(c)
-
-	func commit(parent: Node3D, node_name: String, lift: float) -> Node3D:
-		if vertices.is_empty():
-			return null
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = vertices
-		arrays[Mesh.ARRAY_NORMAL] = normals
-		arrays[Mesh.ARRAY_COLOR] = colours
-		arrays[Mesh.ARRAY_INDEX] = triangles
-
-		var mesh := ArrayMesh.new()
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.roughness = 0.92
-		mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-
-		var node := MeshInstance3D.new()
-		node.name = node_name
-		node.mesh = mesh
-		node.material_override = mat
-		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		parent.add_child(node)
-		return node

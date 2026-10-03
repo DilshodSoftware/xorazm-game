@@ -3,7 +3,8 @@ extends Node3D
 ##
 ## HOVOQ: 2-bosqich (Xorazm relyefi) ishga tushdi — vaqtinchalik tekis yer
 ## olib tashlandi, uni ChunkManager va TerrainGen almashtirdi.
-## Hali vaqtinchalik: DebugProps (3-bosqichda tandirchi haqiqiy uyi bilan).
+## 3-bosqichda vaqtinchalik DebugProps olib tashlandi — endi Tandirchi
+## mahallasining haqiqiy uylari bor.
 
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
 
@@ -14,6 +15,7 @@ const SHOT_PITCH := -4.0
 
 var player: Player
 var chunks: ChunkManager
+var buildings: BuildingManager
 var _hud: Label
 var _hud_visible := false
 
@@ -32,6 +34,8 @@ func _ready() -> void:
 	print_rich("[color=#d9a441]XORAZM[/color] — %s" % Lang.txt("tarix.0"))
 	print_rich("[color=#7fbf6a]Yo'llar:[/color] %d ta, jami %.1f km" % [
 		RoadNetwork.roads().size(), RoadNetwork.total_length() / 1000.0])
+	print_rich("[color=#7fbf6a]Tandirchi:[/color] %d ta ko'cha, %d ta uy joyi" % [
+		Tandirchi.streets().size(), Tandirchi.plots().size()])
 	print_rich("[color=#7fbf6a]Boshqaruv:[/color] F1 yordam · F3 diagnostika")
 
 	_parse_cli()
@@ -50,10 +54,11 @@ func _build_world() -> void:
 	# allaqon tekislangan yerga o'tiradi va hech qachon havoda suzmaydi.
 	RoadBuilder.build(self)
 
-	# Vaqtinchalik sinov obyektlari (3-bosqichda o'chadi)
-	var props := DebugProps.new()
-	props.name = "SinovObyektlari"
-	add_child(props)
+	# Tandirchi mahallasi. Binolar ham, xuddi yer kabi, chunk bo'yicha
+	# yuklanadi — 190 uyni bir vaqtda qursak, zayif GPU uchun og'ir.
+	buildings = BuildingManager.new()
+	buildings.name = "Binolar"
+	add_child(buildings)
 
 
 ## O'yinchini Tandirchi mahallasida, uy oldida o'rnatadi.
@@ -66,6 +71,11 @@ func _spawnplayer() -> void:
 	# chunklarni yuklab oladi (main.gd ga bog'liq emas).
 	chunks.target = player
 	chunks.force_load_all(player.global_position)
+
+	# Binolar ham o'yinchiga bog'lanadi va darhol yuklanadi — teleportdan
+	# keyin bino ostida bir necha kadr bo'sh qolmasligi uchun.
+	buildings.target = player
+	buildings.force_load_all(player.global_position)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -188,7 +198,8 @@ func _parse_cli() -> void:
 				args[i + 1],
 				args[i + 2] if i + 2 < args.size() else "",
 				args[i + 3] if i + 3 < args.size() else "",
-				args[i + 4] if i + 4 < args.size() else ""
+				args[i + 4] if i + 4 < args.size() else "",
+				args[i + 5] if i + 5 < args.size() else ""
 			)
 			return
 		if args[i] == "--nofog" and i + 1 < args.size():
@@ -209,6 +220,14 @@ func _parse_cli() -> void:
 			TerrainMap.render(args[i + 1])
 			get_tree().quit(0)
 			return
+		if args[i] == "--test-buildings":
+			var building_test := BuildingSelfTest.new()
+			building_test.host = self
+			add_child(building_test)
+			return
+		if args[i] == "--testhouse" and i + 1 < args.size():
+			_capture_testhouse(args[i + 1])
+			return
 		if args[i] == "--probe" and i + 1 < args.size():
 			_probe(args[i + 1])
 			return
@@ -225,6 +244,48 @@ func _parse_cli() -> void:
 			terrain_test.host = self
 			add_child(terrain_test)
 			return
+
+
+## YALG'IZ bitta uyni qurib, uni ma'lum nuqtadan suratga oladi.
+## Uyni qayta-qayta tuzatish kerak bo'lganda shu vosita ishlatiladi —
+## aks holda har safar mahallada kamera burchagini qidirib topish
+## kerak bo'lardi.
+##     godot --path . -- --testhouse /tmp/uy.png
+func _capture_testhouse(path: String) -> void:
+	var centre := WorldMap.TANDIRCHI + Vector2(-150.0, -150.0)
+	var builder := MeshBuilder.new()
+	builder.want_collision = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 12345
+	CourtyardHouse.build(builder, centre, deg_to_rad(18.0), 12.5, 15.0, 2,
+		rng, CourtyardHouse.Style.MODERN)
+
+	print_rich("[color=#d9a441]SINOV UYI:[/color] %d uchburchak, %d cho'qqa" % [
+		builder.triangle_count(), builder.vertices.size()])
+
+	var holder := Node3D.new()
+	holder.name = "SinovUyi"
+	add_child(holder)
+	builder.commit(holder, "Mesh")
+	builder.commit_collision(holder, "Kolpasi")
+
+	# Ko'chadan, odam balandligida — Xorazm ko'chasidan ko'rinadigan
+	# ko'rinish. Bu eng muhim ko'rinish: o'yinchi har kuni shuni ko'radi.
+	var forward := Vector2(sin(deg_to_rad(18.0)), cos(deg_to_rad(18.0)))
+	var eye: Vector2 = centre - forward * 9.5
+	var ground: float = TerrainGen.height_at(eye.x, eye.y)
+	var look: Vector2 = (centre - eye).normalized()
+	var yaw: float = rad_to_deg(atan2(-look.x, -look.y))
+	# DIQQAT: ikkinchi teleport BIR XIL burchak bilan bo'lishi shart.
+	# Avval ikkinchisida qiyofa boshqa qiymatga tushib, kamera gorizontal
+	# qaragan va uyning ichi ko'rinmagan.
+	var pitch := 4.0
+	var spot := Vector3(eye.x, ground + 2.7, eye.y)
+	player.teleport(spot, yaw, pitch)
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(spot, yaw, pitch)
+	await _settle(3)
+	_save_shot(path)
 
 
 ## Nuqtaning balandligi va suv holatini chiqaradi. Yo'l tekislashining
@@ -276,7 +337,11 @@ func _capture_aerial(path: String) -> void:
 ##     godot --path . -- --at /tmp/baland.png -1200,-460 900
 ## Birinchi qiymat — "x,z". Ikkinchisi (ixtiyoriy) — balandlik, metr.
 ## Balandlik berilmasa, 25 m (odatdagi ko'z balandligi + biroz tepaga).
-func _capture_at(path: String, where: String, height_arg: String, pitch_arg: String) -> void:
+## `yaw_arg` — ko'rish yo'nalishi, gradus. Berilmasa, yo'l bo'ylab
+## qaraydi (yo'lni tekshirish uchun qulay). Berilsa — aniq yo'nalish,
+## masalan uyni tashqaridan ko'rish uchun.
+func _capture_at(path: String, where: String, height_arg: String,
+		pitch_arg: String, yaw_arg: String) -> void:
 	var parts := where.split(",")
 	if parts.size() < 2:
 		print_rich("[color=#c8452f]--at uchun \"x,z\" kerak[/color]")
@@ -290,14 +355,19 @@ func _capture_at(path: String, where: String, height_arg: String, pitch_arg: Str
 	var pitch: float = SHOT_PITCH
 	if pitch_arg != "":
 		pitch = pitch_arg.to_float()
+	var explicit_yaw := false
+	var yaw_override: float = SHOT_YAW
+	if yaw_arg != "":
+		yaw_override = yaw_arg.to_float()
+		explicit_yaw = true
 
 	# Yo'lda bo'lsa, YO'L BO'YLAB qaraymiz — shunda chiziqlar, ko'prik
 	# va yo'l yonidagi relyef ko'rinadi.
 	# Kamera yo'nalishi: yaw=0 da oldinga qaragan (-Z), shuning uchun
 	# yaw = atan2(-dx, -dz).
-	var yaw := SHOT_YAW
+	var yaw: float = yaw_override
 	var nearest := RoadNetwork.nearest_road_point(Vector2(x, z))
-	if float(nearest["masofa"]) < 60.0:
+	if not explicit_yaw and float(nearest["masofa"]) < 60.0:
 		var d: Vector2 = nearest["yo'nalish"]
 		yaw = rad_to_deg(atan2(-d.x, -d.y))
 

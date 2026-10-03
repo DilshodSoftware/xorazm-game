@@ -24,24 +24,27 @@ loyiha bitta fayl bilan ishga tushadi.
 # Tezkor diagnostika (F3 ham shuni ko'rsatadi)
 ~/Applications/godot --path . -- --bench
 
+# O'yinchi fizikasining avtomatik tekshiruvi (22 ta test)
+~/Applications/godot --headless --path . -- --test
+
 # Ekran surati olish (dizayn tekshiruvi)
 ~/Applications/godot --path . -- --shot /tmp/shot.png
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
 
-## Boshqaruv (0-bosqich, vaqtinchalik)
+## Boshqaruv
 
 | Tugma | Vazifasi |
 |---|---|
-| WASD + sichqoncha | Ko'rish / harakat |
-| Shift | Tez uchish |
-| Ctrl | Pastga |
-| Space | Yuqoriga |
-| E | Xabar sinovi |
-| F1 | Yordam |
-| F3 | Diagnostika (FPS, chizqichlar soni, xotira) |
-| Esc | Chiqish |
+| WASD | Yurish |
+| Shift | Yugurish (kuch sarflanadi, charchaganda to'xtaydi) |
+| Ctrl / C | Egilish |
+| Space | Sakrash (tugma tez bo'shatilsa — pastki sakrash) |
+| Sichqoncha | Ko'rish |
+| F | (5-bosqich: mashinaga minish) |
+| E | (2-bosqich: eshik / NPC) |
+| F1 | Yordam · **F3** diagnostika · **Esc** chiqish |
 
 ---
 
@@ -87,7 +90,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | # | Bosqich | Holat |
 |---|---|---|
 | 0 | Muhit, ertalab yorug'ligi, til tizimi, Git | ✅ |
-| 1 | O'yinchi, FPS kamera, harakat | ⬜ |
+| 1 | O'yinchi, FPS kamera, harakat, egilish, sakrash | ✅ |
 | 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ⬜ |
 | 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ⬜ |
 | 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ⬜ |
@@ -100,21 +103,48 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 11 | Dunyo jonli bo'lishi, saqlash, minimap, vazifa | ⬜ |
 | 12+ | Tank va kema | ⬜ |
 
+### O'yinchi parametrli
+
+| | |
+|---|---|
+| Ko'z balandligi | 1,66 m (egilganda 1,05 m) |
+| Tezliklar | yurish 5,1 · yugurish 7,6 · egilgan 1,45 m/s |
+| Sakrash | 1,0 m (tugma tez bo'shatilsa 0,58 m) |
+| Og'irlik | 19,6 m/s² (haqiqiy 9,8 — o'yin hissi uchun ikki barobar) |
+| Kuch | yugurishda 13/s, 0,9 s kutgandan keyin tiklanadi |
+
 ---
 
 ## Tuzilma
 
 ```
-project.godot      # loyiha sozlamalari, autoload'lar
+project.godot      # loyiha sozlamalari, autoload'lar, fizika qatlamlari
 data/locale/uz.json # barcha o'yin matnlari
 
-src/core/          # game.gd, event_bus.gd, locale.gd, palette.gd,
-                   # settings.gd, save_system.gd, input_setup.gd
-src/world/         # khorezm_morning.gd (yorug'lik), debug_props.gd (vaqtinchalik)
-src/player/        # debug_fly_camera.gd (1-bosqichda almashtiriladi)
+src/core/          # game, event_bus, locale, palette, settings,
+                   # save_system, game_state, input_setup
+src/world/         # khorezm_morning.gd (yorug'lik)
+                   # world_map.gd — Xorazmning haqiqiy koordinatalari
+                   # physics_layers.gd — qatlamlar
+                   # debug_props.gd (vaqtinchalik, 4-bosqichda o'chadi)
+src/player/        # player.gd, camera_rig.gd
 src/main.gd        # o'yin ildizi
-scenes/main.tscn
+scenes/            # main.tscn, player/player.tscn
+tools/             # player_selftest.gd — 22 ta avtomatik test
 ```
+
+## Tekshiruv
+
+Har bir bosqichda avtomatik tekshiruv ishlaydi:
+
+```bash
+~/Applications/godot --headless --path . -- --test    # o'yinchi fizikasi
+~/Applications/godot --path . -- --bench             # FPS (maqsad 60)
+```
+
+`--test` chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
+Bu kelgisi bosqichlarda muhim: yurish, sakrash, egilish va qatlamlar
+keyingi bosqichlarning poydevori (mashinaga minish, suzish, kurashish).
 
 ## O'zbek tilida o'zgartirish
 

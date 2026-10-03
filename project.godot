@@ -38,6 +38,18 @@ window/vsync/vsync_mode=1
 theme/default_font_multichannel_signed_distance_field=false
 common/snap_controls_to_pixels=true
 
+## Fizika qatlamlari — src/world/physics_layers.gd bilan bir xil tartibda.
+[layer_names]
+
+3d_physics/layer_1="World"
+3d_physics/layer_2="O'yinchi"
+3d_physics/layer_3="Mashina"
+3d_physics/layer_4="Buyum"
+3d_physics/layer_5="Trigger"
+3d_physics/layer_6="Suv"
+3d_physics/layer_7="O'q"
+3d_physics/layer_8="Nishon"
+
 [physics]
 
 3d/default_gravity=19.6

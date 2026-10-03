@@ -74,7 +74,18 @@ const CITIES := {
 const TANDIRCHI := Vector2(-1200.0, -457.0)
 
 ## O'yinchi shu nuqtada uyg'onadi.
-const PLAYER_SPAWN := Vector3(-1196.0, 1.2, -452.0)
+##
+## DIQQAT: nuqta atrofidagi obyektlardan (devor, mashina, daraxt) kamida
+## 25 m masofada bo'lishi SHART. Aks holda o'yinchi ularning ichida
+## tug'iladi va `move_and_slide` uni ichkaridan pastga suradi — u yer
+## oriqali tushib ketadi. Bu xato albatta chalkash: chunk collision
+## to'g'ri ishlayotgani ko'rinadi, chunklar "yuklangan" bo'ladi,
+## renderlash statistikasi normal qoladi — o'yinchi esa havoda ketadi.
+## (Shu sabab tools/player_selftest.gd da alohida test bor.)
+##
+## Balandlik RUNDA hisoblanadi (shahar tepasligi ~6 m), chunki statik
+## raqam relyefni o'zgartirganda noto'g'ri bo'lib qoladi.
+const PLAYER_SPAWN := Vector2(-1251.0, -492.0)
 
 
 static func city_position(id: String) -> Vector2:
@@ -83,6 +94,12 @@ static func city_position(id: String) -> Vector2:
 
 static func city_name(id: String) -> String:
 	return CITIES[id]["nom"]
+
+
+## O'yinchi tug'iladigan nuqta — balandlik TerrainGen dan.
+static func spawn_position() -> Vector3:
+	var y: float = TerrainGen.height_at(PLAYER_SPAWN.x, PLAYER_SPAWN.y)
+	return Vector3(PLAYER_SPAWN.x, y + 0.3, PLAYER_SPAWN.y)
 
 
 ## Orolning eng yaqin shahri (HUD/minimap uchun).

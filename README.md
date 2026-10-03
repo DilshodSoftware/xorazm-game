@@ -24,11 +24,20 @@ loyiha bitta fayl bilan ishga tushadi.
 # Tezkor diagnostika (F3 ham shuni ko'rsatadi)
 ~/Applications/godot --path . -- --bench
 
-# O'yinchi fizikasining avtomatik tekshiruvi (22 ta test)
+# O'yinchi fizikasining avtomatik tekshiruvi (27 ta test)
 ~/Applications/godot --headless --path . -- --test
 
-# Ekran surati olish (dizayn tekshiruvi)
-~/Applications/godot --path . -- --shot /tmp/shot.png
+# Xorazm relyefining tekshiruvi (45 ta test)
+~/Applications/godot --headless --path . -- --test-terrain
+
+# Butun orolning tekis rasm xaritasi (GPU'siz)
+~/Applications/godot --headless --path . -- --terrainmap /tmp/map.png
+
+# Ekran surati
+~/Applications/godot --path . -- --shot /tmp/shot.png      # o'yin ichidan
+~/Applications/godot --path . -- --aerial /tmp/a.png      # ko'tarilgan
+~/Applications/godot --path . -- --nofog /tmp/f.png       # tumanisiz
+~/Applications/godot --path . -- --shot /tmp/s.png --hud # diagnostika bilan
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
@@ -91,7 +100,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 |---|---|---|
 | 0 | Muhit, ertalab yorug'ligi, til tizimi, Git | ✅ |
 | 1 | O'yinchi, FPS kamera, harakat, egilish, sakrash | ✅ |
-| 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ⬜ |
+| 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ✅ |
 | 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ⬜ |
 | 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ⬜ |
 | 5 | O'zbek mashinalari + haydash fizikasi | ⬜ |
@@ -102,6 +111,28 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 10 | Kurashish, qurol, dushman AI | ⬜ |
 | 11 | Dunyo jonli bo'lishi, saqlash, minimap, vazifa | ⬜ |
 | 12+ | Tank va kema | ⬜ |
+
+### Xorazm relyefi
+
+Bitta manba bor: `TerrainGen.height_at(x, z)`. Dunyo, jamoa, paxta
+maydonlari, daraxtlar va keyinchalik yo'llar hammasidan shu funksiya
+o'qiydi — shuning uchun hech qayerda "ikkita xil balandlik" bo'lmaydi.
+
+| | |
+|---|---|
+| Orol | 5,8 × 5,2 km (kvadratga yaqin, shaharlar to'g'ri sig'sin) |
+| Chunk | 400 m · radius 2 (doira) = 21 ta · 1 kadr/kadr |
+| Balandlik diapazoni | **−9 … +10 m** — Xorazm hech qachon tog'li emas |
+| Shahar tepaligi | +6,00 m, radius 340 m bilan yumshoq o'tadi |
+| Amudaryo | janubda, ~2140 m da, tubi −9 m |
+| Sho'r ko'llar | 4 ta (janub), tubi −1,3 m |
+| Kanallar | 4 ta (Shavat, Yermish, Polvon, Qilichniyozboy), 14 m keng |
+| G'ovuk ko'l | Xivada, Ø 150 m |
+| Qum tepaliklari | g'arb va janub-g'arb, 7,5 m |
+
+**Tartib muhim:** mayin → chekadan cho'kish → shahar tepaligi → suv o'yilishi.
+Oxirgi ikkitasi almashsa, shahar suv ostida qoladi yoki ko'l tepalik bilan
+to'ladi (ikkalasi ham bo'lgan edi).
 
 ### O'yinchi parametrli
 
@@ -123,14 +154,20 @@ data/locale/uz.json # barcha o'yin matnlari
 
 src/core/          # game, event_bus, locale, palette, settings,
                    # save_system, game_state, input_setup
-src/world/         # khorezm_morning.gd (yorug'lik)
-                   # world_map.gd — Xorazmning haqiqiy koordinatalari
-                   # physics_layers.gd — qatlamlar
-                   # debug_props.gd (vaqtinchalik, 4-bosqichda o'chadi)
+src/world/         # terrain_gen.gd     — BALANDLIKNING YAGONA MANBA
+                   # world_map.gd       — Xorazmning haqiqiy koordinatalari
+                   # world_chunk.gd     — 400 m bo'lak: mesh + collision
+                   # chunk_manager.gd   — streaming
+                   # water_surface.gd   — Amudaryo, kanallar, ko'llar
+                   # khorezm_morning.gd — ertalab yorug'ligi
+                   # physics_layers.gd  — qatlamlar
+                   # debug_props.gd     (vaqtinchalik, 4-bosqichda o'chadi)
 src/player/        # player.gd, camera_rig.gd
 src/main.gd        # o'yin ildizi
 scenes/            # main.tscn, player/player.tscn
-tools/             # player_selftest.gd — 22 ta avtomatik test
+tools/             # player_selftest.gd — 27 ta test
+                   # terrain_selftest.gd — 45 ta test
+                   # terrain_map.gd     — rasm xaritasi chizuvchisi
 ```
 
 ## Tekshiruv
@@ -138,13 +175,19 @@ tools/             # player_selftest.gd — 22 ta avtomatik test
 Har bir bosqichda avtomatik tekshiruv ishlaydi:
 
 ```bash
-~/Applications/godot --headless --path . -- --test    # o'yinchi fizikasi
-~/Applications/godot --path . -- --bench             # FPS (maqsad 60)
+~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
+~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
+~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
 ```
 
-`--test` chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
-Bu kelgisi bosqichlarda muhim: yurish, sakrash, egilish va qatlamlar
-keyingi bosqichlarning poydevori (mashinaga minish, suzish, kurashish).
+Har ikkalasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
+
+**Bu nima uchun muhim.** 2-bosqichda tekshiruvlar bitta ko'rinmas xatoni
+topdi: chunk ostida bir necha kadrga teshik qolardi va o'yinchi havoga
+tushib ketardi. Chunklar soni va renderlash statistikasi **normal**
+ko'rinardi — faqat skrinshotga qarab sezildi. Yana uchta xato ham shu
+tarzda yashiringan edi. Kelgisi bosqichlarda (mashina, suzish, kurashish)
+ham shu poydevor kerak.
 
 ## O'zbek tilida o'zgartirish
 

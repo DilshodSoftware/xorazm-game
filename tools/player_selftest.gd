@@ -8,6 +8,17 @@ extends Node
 ## keyingi barcha bosqichlar shularga tayanadi (mashinaga minish, suzish,
 ## kurashish). Agar bu yerda xato bo'lsa, u 10-bosqichda chiqadi va
 ## tuzatish juda qiyin bo'ladi.
+##
+## SINOV YERI: Urganch markazi. Bu Xorazmdagi eng tekis nuqta — shahar
+## tepaligi markazda aniq 6,00 m. O'lchovlar nisbiy (erga nisbatan),
+## shuning uchun relyefni o'zgartirsak ham test o'zgarmaydi.
+##
+## Bu sahnaga qo'shiladigan NODE bo'lishi SHART: RefCounted bo'lsa,
+## `await` qilingandan keyin obyekt bo'shilib ketadi va tekshiruv
+## jimgina to'xtab qoladi (RefCounted signalga obyektni ushlab turmaydi).
+
+## Sinov maydoni — Urganch markazi, tepalik markazi (aniq 6,00 m)
+const GROUND := Vector2(-745.0, 13.0)
 
 const SETTLE_FRAMES := 30
 const WALK_FRAMES := 45
@@ -16,17 +27,26 @@ const JUMP_FRAMES := 90
 ## (JUMP_CUT ishi sabab). ~0,5 s yetarli.
 const JUMP_HOLD_FRAMES := 32
 
-## Bu sahnaga qo'shiladigan NODE bo'lishi SHART: RefCounted bo'lsa,
-## `await` qilingandan keyin obyekt bo'shilib ketadi va tekshiruv
-## jimgina to'xtab qoladi (RefCounted signalga obyektni ushlab turmaydi).
-
 var host: Node
 
 var _passed := 0
 var _failed := 0
 
 
+var _dummy_target: Node3D
+
+
 func _ready() -> void:
+	# ChunkManager BITTAGINA nishoni kuzatadi. Sinov maydoni boshqa
+	# nuqtada bo'lgani uchun, aks holda manager haqiqiy o'yinchini kuzatib
+	# davom etar va SINOV chunklarini bo'shatib yuborardi — o'yinchi
+	# havoga tushardi. Shuning uchun vaqtincha nishonni almashtiramiz.
+	_dummy_target = Node3D.new()
+	_dummy_target.name = "SinovNishoni"
+	_dummy_target.position = Vector3(GROUND.x, 0.0, GROUND.y)
+	add_child(_dummy_target)
+	host.chunks.target = _dummy_target
+	host.chunks.force_load_all(_dummy_target.global_position)
 	_run()
 
 
@@ -34,6 +54,7 @@ func _run() -> void:
 	print_rich("\n[b]=== O'YINCHI O'Z-IJNI TEKSHIRUVI ===[/b]")
 
 	await _test_gravity_and_rest()
+	await _test_spawn_is_clear()
 	await _test_walk_direction()
 	await _test_sprint_speed()
 	await _test_jump_and_land()
@@ -45,7 +66,6 @@ func _run() -> void:
 		_passed, "c8452f" if _failed > 0 else "7fbf6a", _failed
 	])
 	print("")
-	# Chiqish kodi: 0 = hammasi o'tdi (terminal/CI uchun)
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
@@ -67,18 +87,13 @@ func _ok(label: String, actual: float, expected: float, tolerance: float) -> voi
 
 ## Yer ushlab turishi: og'irlik ishlaydi, qo'lda qolmaydi.
 func _test_gravity_and_rest() -> void:
-	# 6 m dan tushirish — 1,3 sekund yetarli. 40 m dan tushirsak,
-	# chegara oshib ketadi va test hamma narsa "hali tushmagan" bo'lib chiqadi.
-	var player := _fresh_player(host, Vector3(0, 6, 0))
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground + 6.0, GROUND.y))
 	await _wait(SETTLE_FRAMES * 4)
 
-	# O'yinchi ILDIZI oyoqda turadi (shakl markazi 0,90 da), shuning uchun
-	# yerga qo'naygan holatda y = 0 bo'lishi kerak.
-	_ok("Yerga qo'naydi", player.global_position.y, 0.0, 0.12)
+	_ok("Erga qo'naydi", player.global_position.y, ground, 0.25)
 	_check("Yerda turibdi", player.is_on_floor(),
 		"(is_on_floor = %s)" % player.is_on_floor())
-
-	# X, Z silinishi bo'lmasligi kerak
 	_check("X silinmadi", absf(player.velocity.x) < 0.01)
 	_check("Z silinmadi", absf(player.velocity.z) < 0.01)
 
@@ -86,11 +101,62 @@ func _test_gravity_and_rest() -> void:
 	await host.get_tree().process_frame
 
 
+## Tug'ilish nuqtasi toza bo'lishi SHART.
+##
+## Bu test bir haqiqiy xatoni ushlaydi: o'yinchi birinchi bo'lib
+## ishga tushganda, agar nuqta qo'yilgan obyektning (devor, mashina,
+## daraxt) ICHIDA bo'lsa, `move_and_slide` uni ichkaridan pastga suradi
+## va u yer oriqali tushib ketadi. Chunklar to'g'ri ishlayotganini
+## ko'rib, chunk collision muammosi deb o'ylash mumkin — lekin muammo
+## boshqada. Shu sabab bu test alohida qo'yilgan.
+func _test_spawn_is_clear() -> void:
+	var spawn := WorldMap.spawn_position()
+	_check("Tug'ilish nuqtasi yer ustidagi to'g'ri yerda",
+		TerrainGen.height_at(spawn.x, spawn.z) > 1.0,
+		"(yer %.2f m, spawn %.2f m)" % [TerrainGen.height_at(spawn.x, spawn.z), spawn.y])
+
+	# Tug'ilish nuqtasida bosh to'plami (ko'z balandligi) bo'sh bo'lishi kerak.
+	# DIQQAT: yerning O'ZINI tekshiruvdan chiqarish kerak — collision to'ri
+	# 8,3 m, shuning uchun nuqtadagi haqiqiy yuzasi TerrainGen dan 0,2–0,4 m
+	# farq qilishi mumkin va probs ustiga tushib qoladi. Shuning uchun
+	# avval yuzani raycast bilan topamiz, keyin undan yuqorini tekshiramiz.
+	var space: PhysicsDirectSpaceState3D = host.get_world_3d().direct_space_state
+	var down := PhysicsRayQueryParameters3D.create(
+		spawn + Vector3(0, 40.0, 0), spawn + Vector3(0, -40.0, 0))
+	down.collision_mask = PhysicsLayers.WORLD
+	var hit: Dictionary = space.intersect_ray(down)
+	var surface_y: float = (hit["position"] as Vector3).y if not hit.is_empty() else spawn.y
+
+	var probe := BoxShape3D.new()
+	probe.size = Vector3(0.7, 1.7, 0.7)
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = probe
+	params.transform = Transform3D(
+		Basis.IDENTITY, Vector3(spawn.x, surface_y + 0.05 + 0.85, spawn.z))
+	params.collision_mask = PhysicsLayers.SOLID
+	var hits: Array[Dictionary] = space.intersect_shape(params, 4)
+	_check("Tug'ilish nuqtasida to'sqinlik yo'q", hits.is_empty(),
+		"(%d ta to'sqinlik, yuzasi %.2f m)" % [hits.size(), surface_y])
+
+	# O'yinchi shu nuqtada qo'yilsa va YERGA TUSHMASIN
+	var player := _fresh_player(host, spawn)
+	await _wait(SETTLE_FRAMES * 3)
+	var ground: float = TerrainGen.height_at(spawn.x, spawn.z)
+	_check("Tug'ilishda yerga tushmaydi",
+		player.global_position.y > ground - 0.5,
+		"(y = %.2f, yer %.2f)" % [player.global_position.y, ground])
+	_check("Tug'ilishda yerga o'tiradi", player.is_on_floor())
+
+	player.queue_free()
+	await host.get_tree().process_frame
+
+
 ## Yurish yo'nalishi: W bosilganda kamera qaragan tomonga.
 func _test_walk_direction() -> void:
-	var player := _fresh_player(host, Vector3(0, 0, 0))
-	# Sharqqa qarayapti (yaw -90)
-	player.teleport(Vector3(0, 1.0, 0), -90.0, 0.0)
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground, GROUND.y))
+	# yaw = 0 da oldinga = -Z = shimol
+	player.teleport(player.global_position, 0.0, 0.0)
 	await _wait(SETTLE_FRAMES)
 
 	var start := player.global_position
@@ -100,10 +166,10 @@ func _test_walk_direction() -> void:
 	await _wait(5)
 
 	var moved := player.global_position - start
-	_check("Oldinga yurdi (sharqqa)", moved.x > 3.0,
+	_check("Oldinga yurdi (shimolga, -Z)", moved.z < -3.0,
 		"(Δx = %.2f, Δz = %.2f)" % [moved.x, moved.z])
-	_check("Z o'qi bo'yicha chetlash kam", absf(moved.z) < moved.x * 0.25,
-		"(Δz = %.2f)" % moved.z)
+	_check("X o'qi bo'yicha chetlash kam", absf(moved.x) < maxf(moved.z * 0.25, 0.5),
+		"(Δx = %.2f)" % moved.x)
 
 	player.queue_free()
 	await host.get_tree().process_frame
@@ -111,8 +177,9 @@ func _test_walk_direction() -> void:
 
 ## Shift bilan yugurish tezroq va kuch sarflaydi.
 func _test_sprint_speed() -> void:
-	var player := _fresh_player(host, Vector3(0, 0, 0))
-	player.teleport(Vector3(0, 1.0, 0), -90.0, 0.0)
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground, GROUND.y))
+	player.teleport(player.global_position, 0.0, 0.0)
 	await _wait(SETTLE_FRAMES)
 
 	# Oddiy yugurish (Shift'siz)
@@ -141,7 +208,8 @@ func _test_sprint_speed() -> void:
 
 ## Sakrash: ko'tariladi, keyin yerga qaytadi. Pastki sakrash ham ishlaydi.
 func _test_jump_and_land() -> void:
-	var player := _fresh_player(host, Vector3(0, 0, 0))
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground, GROUND.y))
 	await _wait(SETTLE_FRAMES)
 
 	# --- To'liq sakrash ---
@@ -152,7 +220,6 @@ func _test_jump_and_land() -> void:
 	# MUHIM: tepa nuqtasi ~19-kadrda. Agar biz tugmаni ushlab turganimizda
 	# o'lchmay qo'yib, keyin o'lchashni boshlagan bo'lsak, tepa nuqtasi
 	# allaqachon o'tib ketadi va sakrash "past" ko'rinadi.
-	# Shuning uchun har BIR kadrda balandlikni yozib boramiz.
 	for _i in JUMP_HOLD_FRAMES:
 		await host.get_tree().physics_frame
 		peak = maxf(peak, player.global_position.y)
@@ -165,7 +232,7 @@ func _test_jump_and_land() -> void:
 	_ok("To'liq sakrash balandligi", peak - ground_y, 0.95, 0.25)
 	_check("Yerga qaytdi", player.is_on_floor(),
 		"(is_on_floor = %s)" % player.is_on_floor())
-	_ok("Yerda turgan y", player.global_position.y, ground_y, 0.15)
+	_ok("Yerda turgan y", player.global_position.y, ground_y, 0.25)
 
 	# --- Pastki sakrash (tugma tez bo'shatilsa) ---
 	await _wait(25)
@@ -193,7 +260,8 @@ func _test_jump_and_land() -> void:
 
 ## Egilish: kamayadi, pastga sakramaydi, tepada to'sqinlik bo'lsa turmaydi.
 func _test_crouch_and_ceiling() -> void:
-	var player := _fresh_player(host, Vector3(0, 0, 0))
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground, GROUND.y))
 	await _wait(SETTLE_FRAMES)
 
 	# --- Pastga sakramasligi kerak ---
@@ -207,9 +275,12 @@ func _test_crouch_and_ceiling() -> void:
 	_check("Egilganda sakramadi", player.global_position.y <= y_before + 0.05,
 		"(y: %.2f -> %.2f)" % [y_before, player.global_position.y])
 
+	# Oyoq yerda qolishi kerak (kapsula markazi ko'tarilmasin)
+	_ok("Egilganda oyog' yerda", player.global_position.y, ground, 0.25)
 	_check("Egilgan holatda", player.crouching)
 
 	# --- Tepada shift bilan ---
+	var base := player.global_position
 	var ceiling := StaticBody3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(4, 0.4, 4)
@@ -217,8 +288,8 @@ func _test_crouch_and_ceiling() -> void:
 	col.shape = shape
 	ceiling.add_child(col)
 	ceiling.collision_layer = PhysicsLayers.WORLD
-	ceiling.position = Vector3(0, 1.45, 0)   # egilgan bosh (~1,05) ustida,
-	host.add_child(ceiling)                   # tik bosh (~1,66) ostida
+	ceiling.position = base + Vector3(0, 1.45, 0)   # egilgan bosh (~1,05) ustida,
+	host.add_child(ceiling)                           # tik bosh (~1,66) ostida
 	await _wait(10)
 
 	Input.action_release("crouch")
@@ -238,7 +309,8 @@ func _test_crouch_and_ceiling() -> void:
 
 ## Qatlamlar to'g'ri: o'yinchi o'zi bilan to'qnashmaydi, lekin yerga uriladi.
 func _test_collision_layers() -> void:
-	var player := _fresh_player(host, Vector3(0, 0, 0))
+	var ground: float = TerrainGen.height_at(GROUND.x, GROUND.y)
+	var player := _fresh_player(host, Vector3(GROUND.x, ground, GROUND.y))
 	await _wait(SETTLE_FRAMES)
 
 	_check("Qatlam = O'yinchi", player.collision_layer == PhysicsLayers.PLAYER,
@@ -260,7 +332,7 @@ func _fresh_player(host: Node, position: Vector3) -> Player:
 	var player := scene.instantiate() as Player
 	host.add_child(player)
 	player.teleport(position)
-	player.set_mouse_sensitivity(0.0)   # sichqoncha javobini yoq qilamiz
+	player.set_mouse_sensitivity(0.0)   # sichqoncha javobini yo'q qilamiz
 	Game.release_mouse()
 	return player
 

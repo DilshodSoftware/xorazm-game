@@ -1,20 +1,19 @@
 extends Node3D
 ## O'yin ildizi. Dunyo, yorug'lik va o'yinchi shu yerda yig'iladi.
 ##
-## HOVOQ: 0- va 1-bosqich uchun ishga tayyor. Quyidagilar vaqtinchalik:
-##   _add_temporary_ground() — 2-bosqichda protsedural Xorazm relyefi bilan
-##   DebugProps              — 1-bosqichda tandirchi haqiqiy uyi bilan
-## Ularning ikkalasi ham keyingi bosqichda o'chiriladi.
+## HOVOQ: 2-bosqich (Xorazm relyefi) ishga tushdi — vaqtinchalik tekis yer
+## olib tashlandi, uni ChunkManager va TerrainGen almashtirdi.
+## Hali vaqtinchalik: DebugProps (3-bosqichda tandirchi haqiqiy uyi bilan).
 
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
 
 ## Sinov skriptlari uchun qarash nuqtasi: Tandirchi mahallasi,
 ## sharqqa qarab (quyosh ham aynan sharqda).
-const SHOT_POSITION := Vector3(-1196.0, 1.2, -452.0)
 const SHOT_YAW := -90.0
 const SHOT_PITCH := -4.0
 
-var _player: Player
+var player: Player
+var chunks: ChunkManager
 var _hud: Label
 var _hud_visible := false
 
@@ -24,10 +23,8 @@ func _ready() -> void:
 	# Butun o'yin shu vaqtda — quyosh qimirlamaydi, GPU yuki kam qoladi.
 	KhorezmMorning.install(self, Settings.draw_distance(), Settings.shadow_distance())
 
-	# Vaqtinchalik tekis yer (2-bosqichda haqiqiy relyef bilan)
-	_add_temporary_ground()
-
-	_spawn_player()
+	_build_world()
+	_spawnplayer()
 
 	_build_hud()
 	_build_help()
@@ -38,11 +35,30 @@ func _ready() -> void:
 	_parse_cli()
 
 
+## Xorazm vohasi: protsedural yer, suv va sinov obyektlari.
+func _build_world() -> void:
+	chunks = ChunkManager.new()
+	chunks.name = "Yer"
+	add_child(chunks)
+
+	add_child(WaterSurface.new())
+
+	# Vaqtinchalik sinov obyektlari (3-bosqichda o'chadi)
+	var props := DebugProps.new()
+	props.name = "SinovObyektlari"
+	add_child(props)
+
+
 ## O'yinchini Tandirchi mahallasida, uy oldida o'rnatadi.
-func _spawn_player() -> void:
-	_player = PLAYER_SCENE.instantiate() as Player
-	add_child(_player)
-	_player.teleport(WorldMap.PLAYER_SPAWN, SHOT_YAW, SHOT_PITCH)
+func _spawnplayer() -> void:
+	player = PLAYER_SCENE.instantiate() as Player
+	add_child(player)
+	player.teleport(WorldMap.spawn_position(), SHOT_YAW, SHOT_PITCH)
+
+	# ChunkManager o'yinchiga bog'lanadi — u har kadrda o'z atrofiga
+	# chunklarni yuklab oladi (main.gd ga bog'liq emas).
+	chunks.target = player
+	chunks.force_load_all(player.global_position)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -57,49 +73,6 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if _hud_visible and _hud:
 		_hud.text = _diagnostics()
-
-
-# ----------------------------------------------------------------- Vaqtinchalik
-
-func _add_temporary_ground() -> void:
-	# 30 km — tuman chegarasidan juda uzoq. Shuning uchun yerning chekkasi
-	# ko'rinmaydi va osmon bilan tabiiy birikadi. Ikki uchburchak, arzon.
-	var mesh := PlaneMesh.new()
-	mesh.size = Vector2(30_000, 30_000)
-	mesh.subdivide_width = 1
-	mesh.subdivide_depth = 1
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Palette.SAND
-	mat.roughness = 1.0
-	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-
-	var ground := MeshInstance3D.new()
-	ground.name = "Yer"
-	ground.mesh = mesh
-	ground.material_override = mat
-	add_child(ground)
-
-	# Yer ostida tekis collision — o'yinchi va mashina yerga tushsin.
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(30_000, 20, 30_000)
-	var col := CollisionShape3D.new()
-	col.shape = shape
-	col.position = Vector3(0, -10, 0)
-
-	var body := StaticBody3D.new()
-	body.name = "YerKolpasi"
-	body.collision_layer = PhysicsLayers.WORLD
-	body.collision_mask = 0
-	body.add_child(col)
-	add_child(body)
-
-	# Materiallar, soya va tuman masofasini tekshirish uchun obyektlar
-	# (vaqtinchalik — 1-bosqich oxirida o'chadi)
-	var props := DebugProps.new()
-	props.name = "SinovObyektlari"
-	props.position = Vector3(-1161, 0, -457)
-	add_child(props)
 
 
 # ------------------------------------------------------------------------ HUD
@@ -137,19 +110,22 @@ func _diagnostics() -> String:
 		DisplayServer.window_get_size().x, DisplayServer.window_get_size().y
 	])
 	lines.append("----")
-	if _player:
-		var p := _player.global_position
+	if player:
+		var p := player.global_position
 		lines.append("X: %.1f  Y: %.2f  Z: %.1f" % [p.x, p.y, p.z])
 		lines.append("Tezlik: %.2f m/s   Yerga teggan: %s" % [
-			_player.horizontal_speed(), "ha" if _player.is_on_floor() else "yo'q"
+			player.horizontal_speed(), "ha" if player.is_on_floor() else "yo'q"
 		])
 		lines.append("Egilgan: %s   Yugurish: %s   Kuch: %.0f" % [
-			_player.crouching, _player.sprinting, Game.state.stamina
-		])
-		lines.append("Qatlam: %d (mask: %s)" % [
-			_player.collision_layer, PhysicsLayers.describe(_player.collision_mask)
+			player.crouching, player.sprinting, Game.state.stamina
 		])
 		lines.append("Taxminiy shahar: %s" % WorldMap.nearest_city(p))
+	if chunks:
+		lines.append("Chunklar: %d (jami %d)" % [
+			chunks.loaded_count(), chunks.generated_total()
+		])
+		lines.append("---")
+		lines.append("Chunk: 400 m · Radius %d" % Settings.load_radius())
 	return "\n".join(lines)
 
 
@@ -197,6 +173,22 @@ func _parse_cli() -> void:
 		if args[i] == "--shot" and i + 1 < args.size():
 			_capture(args[i + 1])
 			return
+		if args[i] == "--aerial" and i + 1 < args.size():
+			_capture_aerial(args[i + 1])
+			return
+		if args[i] == "--nofog" and i + 1 < args.size():
+			_clear_fog(true)
+			_hide_water(true)
+			_capture(args[i + 1])
+			return
+		if args[i] == "--nowater" and i + 1 < args.size():
+			_hide_water(true)
+			_capture(args[i + 1])
+			return
+		if args[i] == "--terrainmap" and i + 1 < args.size():
+			TerrainMap.render(args[i + 1])
+			get_tree().quit(0)
+			return
 		if args[i] == "--bench":
 			_benchmark()
 			return
@@ -205,6 +197,11 @@ func _parse_cli() -> void:
 			test.host = self
 			add_child(test)
 			return
+		if args[i] == "--test-terrain":
+			var terrain_test := TerrainSelfTest.new()
+			terrain_test.host = self
+			add_child(terrain_test)
+			return
 
 
 const CAPTURE_FRAMES := 40
@@ -212,11 +209,62 @@ const BENCH_FRAMES := 400
 
 
 func _capture(path: String) -> void:
-	_player.teleport(SHOT_POSITION, SHOT_YAW, SHOT_PITCH)
-	_hud.visible = false
-	_help.visible = false
-	await _settle(CAPTURE_FRAMES)
+	player.teleport(WorldMap.spawn_position(), SHOT_YAW, SHOT_PITCH)
+	await _settle(10)
+	_save_shot(path)
 
+
+## Ko'tarilgan ko'rinish: relyef, kanallar, Amudaryo ko'rinadi.
+##     godot --path . -- --aerial /tmp/a.png
+func _capture_aerial(path: String) -> void:
+	player.teleport(Vector3(-300.0, 300.0, -1500.0), -75.0, -38.0)
+	_hide_water(true)
+	_extend_far(6000.0)
+	await _settle(CAPTURE_FRAMES)
+	_save_shot(path)
+
+
+## Ko'tarilgan ko'rinish uchun tayyorgarlik.
+##
+## Ikki narsani o'zgartiradi:
+##   * kamera chegarasi (odatda 585 m — tuman uchun)
+##   * TUMAN O'CHIRILADI. U maydon darajasidagi o'yin uchun sozlangan:
+##     300 m balandlikda hammasi yopilib ketadi. O'yinchi hech qachon
+##     u qadar ko'tarilmaydi, shuning uchun bu faqat dizayn vositasi.
+func _extend_far(distance: float) -> void:
+	var cam: Camera3D = player.rig.camera
+	if cam:
+		cam.far = distance
+	_clear_fog(true)
+
+
+## Suv tekisligini yashirish (dizayn ko'rinishi uchun).
+##
+## Nima uchun bu kerak: Xorazm tekisligida yer faqat 6 m balandlikda,
+## suv esa 0 m da. Yuqoridan qaraganda 6 m farq ko'rinmaydi va 12 km li
+## suv tekisi relyefni to'liq to'sib qo'yadi.
+func _hide_water(off: bool) -> void:
+	for node in get_children():
+		if node is WaterSurface:
+			(node as WaterSurface).visible = not off
+
+
+func _clear_fog(off: bool) -> void:
+	for node in get_children():
+		if node is WorldEnvironment:
+			var env := (node as WorldEnvironment).environment
+			if env:
+				env.fog_enabled = not off
+
+
+func _save_shot(path: String) -> void:
+	var want_hud: bool = OS.get_cmdline_user_args().has("--hud")
+	_hud.visible = want_hud
+	_help.visible = false
+	if want_hud:
+		_hud_visible = true
+		_hud.text = _diagnostics()
+	await _settle(CAPTURE_FRAMES)
 	var image := get_viewport().get_texture().get_image()
 	var err := image.save_png(path)
 	print_rich("[color=#7fbf6a]Skrinshot[/color] %s — %d×%d (xato: %d)" % [
@@ -226,7 +274,7 @@ func _capture(path: String) -> void:
 
 
 func _benchmark() -> void:
-	_player.teleport(SHOT_POSITION, SHOT_YAW, SHOT_PITCH)
+	player.teleport(WorldMap.spawn_position(), SHOT_YAW, SHOT_PITCH)
 	await _settle(60)
 
 	var start := Time.get_ticks_usec()

@@ -28,7 +28,7 @@ const JUMP_VELOCITY := 6.1
 const COYOTE_TIME := 0.13
 ## Yerga urishdan oldin bosilsa ham sakrashni kutadi
 const JUMP_BUFFER_TIME := 0.16
-## Tugmа bosib yuborilsa sakrash qisqaradi (pastki sakrash)
+## Tugma bosib yuborilsa sakrash qisqaradi (pastki sakrash)
 const JUMP_CUT := 0.45
 
 # --- Shakl ---

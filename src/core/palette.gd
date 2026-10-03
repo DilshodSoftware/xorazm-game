@@ -13,10 +13,10 @@ extends Node
 ## ularni yoritganda qiymat 1.0 dan oshadi va rang oqaga yuviladi.
 const SAND := Color("a89164")           ## Qum tepaligi
 const SAND_DARK := Color("8e7449")      ## Qumning soyasi
-const STEPPE := Color("a9a062")          ## Quruq o't / dasht
-const STEPPE_DRY := Color("8f8a52")      ## Parcha o't
-const COTTON := Color("e3ddcc")          ## Paxta maydoni (oq)
-const SOIL := Color("8d7350")            #  Sho'rlangan bo'z tuproq
+const STEPPE := Color("94894f")          ## Quruq o't / dasht
+const STEPPE_DRY := Color("7d7744")      ## Parcha o't
+const COTTON := Color("d8d2bf")          ## Paxta maydoni (oq)
+const SOIL := Color("7a6242")            ## Sho'rlangan bo'z tuproq
 const SALINE := Color("dcd8cc")          ## Sho'r ko'l quritilgan yuzasi
 const RIVERBED := Color("9a8b62")        ## Amudaryo tubi
 
@@ -51,7 +51,7 @@ const CONCRETE_ROAD := Color("7d786f")
 const SOIL_ROAD := Color("9c8256")       ## Xorazmning qumloy yo'llari
 
 # --- Ranglar (mashinalar) ---
-## Real hayotdagidek: O'zbekistonda asosan oq va kuvа mashinalar.
+## Real hayotdagidek: O'zbekistonda asosan oq va kuva mashinalar.
 const CAR_WHITE := Color("eceae4")
 const CAR_SILVER := Color("b9bcc0")
 const CAR_BLACK := Color("2a2a2c")

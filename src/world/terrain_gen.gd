@@ -125,8 +125,18 @@ static func _noise(wavelength: float, octaves: int, gain: float, seed_offset: in
 # =============================================================== BALANDLIK
 
 ## Dunyoning istalgan nuqtasidagi balandlik (metr, dengiz sathiga nisbatan).
+##
 ## Bu — bitta manba: mesh, collision, obyektlar va yo'llar shundan o'qiydi.
 static func height_at(x: float, z: float) -> float:
+	# Yo'llar yer ostida tekis koridor bo'lishi kerak, shuning uchun
+	# avval tabiiy balandlik, keyin yo'l tekislash qo'llaniladi.
+	# RoadNetwork faqat _base_height ni chaqiradi — chekinish (recursion)
+	# bo'lmaydi.
+	return RoadNetwork.flatten(x, z, _base_height(x, z))
+
+
+## Tabiiy balandlik — YO'LLARSIZ. RoadNetwork shuni ishlatadi.
+static func _base_height(x: float, z: float) -> float:
 	_ensure()
 
 	# --- 1. Orol maski ---
@@ -219,6 +229,38 @@ static func _carve_water(x: float, z: float, h: float) -> float:
 				1.0 - smoothstep(0.0, CANAL_HALF_WIDTH, d2)))
 
 	return h
+
+
+## Sug'orish kanalining suv sathi.
+##
+## DIQQAT: kanal suv sathi DENGIZ sathida EMAS. Xorazm kanallari
+## Amudaryodan suv oladi va tepalik bo'ylab oqadi — ya'ni ular yer
+## yuzasidan yuqorida (≈ 4,6 m) turadi. Agar ularni dengiz sathiga
+## tushirsak, kanallar butunlay QURUQ ko'rinadi (terrassi 3,5 m da
+## qoladi, suv esa 0 m da) va ko'prik kerak joylar aniqlanmaydi.
+const CANAL_WATER_LEVEL := 4.6
+
+## Nuqtaning suv sathi (m). Kanal va ko'llarda — yuqorida, Amudaryo
+## va sho'r ko'llarda — dengiz sathida.
+static func water_level_at(x: float, z: float) -> float:
+	var point := Vector2(x, z)
+
+	# Kanallar — suv eng balandda
+	for canal: Dictionary in CANALS:
+		if _distance_to_segment(point, canal["a"], canal["b"]) < CANAL_HALF_WIDTH * 1.2:
+			return CANAL_WATER_LEVEL
+
+	# G'ovuk ko'l
+	if point.distance_to(GOVUK_POOL["pos"]) < float(GOVUK_POOL["r"]) * 1.1:
+		return CANAL_WATER_LEVEL
+
+	# Sho'r ko'llar va Amudaryo — dengiz sathida
+	return Settings.SEA_LEVEL
+
+
+## Nuqta suv ostidami? Kanal, ko'l yoki daryo — hamma uchun.
+static func is_submerged(x: float, z: float) -> bool:
+	return _base_height(x, z) < water_level_at(x, z) - 0.02
 
 
 ## Noldan birgacha: 0 = shahar chegarasidan tashqarida, 1 = markazda.
@@ -318,9 +360,9 @@ static func color_at(x: float, z: float, h: float, slope: float) -> Color:
 
 ## Nuqta suv ostidami (ko'llar, kanallar, daryo).
 static func is_water(x: float, z: float) -> bool:
-	return height_at(x, z) < Settings.SEA_LEVEL
+	return height_at(x, z) < water_level_at(x, z) - 0.02
 
 
 ## Yer ustidagi eng yaqin nuqta (obyekt qo'yish, kameralar uchun).
 static func surface_y(x: float, z: float) -> float:
-	return maxf(height_at(x, z), Settings.SEA_LEVEL)
+	return maxf(height_at(x, z), water_level_at(x, z))

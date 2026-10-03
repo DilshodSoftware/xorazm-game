@@ -30,18 +30,25 @@ func _ready() -> void:
 	_build_help()
 
 	print_rich("[color=#d9a441]XORAZM[/color] — %s" % Lang.txt("tarix.0"))
+	print_rich("[color=#7fbf6a]Yo'llar:[/color] %d ta, jami %.1f km" % [
+		RoadNetwork.roads().size(), RoadNetwork.total_length() / 1000.0])
 	print_rich("[color=#7fbf6a]Boshqaruv:[/color] F1 yordam · F3 diagnostika")
 
 	_parse_cli()
 
 
-## Xorazm vohasi: protsedural yer, suv va sinov obyektlari.
+## Xorazm vohasi: protsedural yer, suv, yo'llar va sinov obyektlari.
 func _build_world() -> void:
 	chunks = ChunkManager.new()
 	chunks.name = "Yer"
 	add_child(chunks)
 
 	add_child(WaterSurface.new())
+
+	# Yo'llar. RoadNetwork avval yer ostini tekislaydi (TerrainGen ichida),
+	# shuning uchun bu qator MUTLAQ chunndan keyin kelishi shart: lentalar
+	# allaqon tekislangan yerga o'tiradi va hech qachon havoda suzmaydi.
+	RoadBuilder.build(self)
 
 	# Vaqtinchalik sinov obyektlari (3-bosqichda o'chadi)
 	var props := DebugProps.new()
@@ -176,6 +183,14 @@ func _parse_cli() -> void:
 		if args[i] == "--aerial" and i + 1 < args.size():
 			_capture_aerial(args[i + 1])
 			return
+		if args[i] == "--at" and i + 1 < args.size():
+			_capture_at(
+				args[i + 1],
+				args[i + 2] if i + 2 < args.size() else "",
+				args[i + 3] if i + 3 < args.size() else "",
+				args[i + 4] if i + 4 < args.size() else ""
+			)
+			return
 		if args[i] == "--nofog" and i + 1 < args.size():
 			_clear_fog(true)
 			_hide_water(true)
@@ -185,9 +200,17 @@ func _parse_cli() -> void:
 			_hide_water(true)
 			_capture(args[i + 1])
 			return
+		if args[i] == "--test-roads":
+			var road_test := RoadSelfTest.new()
+			road_test.host = self
+			add_child(road_test)
+			return
 		if args[i] == "--terrainmap" and i + 1 < args.size():
 			TerrainMap.render(args[i + 1])
 			get_tree().quit(0)
+			return
+		if args[i] == "--probe" and i + 1 < args.size():
+			_probe(args[i + 1])
 			return
 		if args[i] == "--bench":
 			_benchmark()
@@ -204,6 +227,27 @@ func _parse_cli() -> void:
 			return
 
 
+## Nuqtaning balandligi va suv holatini chiqaradi. Yo'l tekislashining
+## natijasini tekshirish uchun qulay.
+##     godot --headless --path . -- --probe -745,180
+func _probe(where: String) -> void:
+	for one: String in where.split(";"):
+		var parts := one.split(",")
+		if parts.size() < 2:
+			continue
+		var x := parts[0].to_float()
+		var z := parts[1].to_float()
+		var raw: float = TerrainGen._base_height(x, z)
+		var flat: float = TerrainGen.height_at(x, z)
+		var water: float = TerrainGen.water_level_at(x, z)
+		var road := RoadNetwork.nearest_road_point(Vector2(x, z))
+		print_rich("(%.0f, %.0f)  xom=%.2f m  tekis=%+.2f m  suv=%.2f m  %s  yo'l=%s (%.1f m)" % [
+			x, z, raw, flat, water,
+			"suv ostida" if flat < water else "quruq",
+			road["yo'l"], road["masofa"]])
+	get_tree().quit(0)
+
+
 const CAPTURE_FRAMES := 40
 const BENCH_FRAMES := 400
 
@@ -217,10 +261,57 @@ func _capture(path: String) -> void:
 ## Ko'tarilgan ko'rinish: relyef, kanallar, Amudaryo ko'rinadi.
 ##     godot --path . -- --aerial /tmp/a.png
 func _capture_aerial(path: String) -> void:
-	player.teleport(Vector3(-300.0, 300.0, -1500.0), -75.0, -38.0)
+	var spot := Vector3(-300.0, 300.0, -1500.0)
+	player.teleport(spot, -75.0, -38.0)
 	_hide_water(true)
 	_extend_far(6000.0)
 	await _settle(CAPTURE_FRAMES)
+	player.teleport(spot, -75.0, -38.0)
+	await _settle(3)
+	_save_shot(path)
+
+
+## Ixtiyoriy nuqtadan surat. Yo'l, ko'prik yoki shaharni ko'rish uchun.
+##     godot --path . -- --at /tmp/yo'l.png  -1851,-503
+##     godot --path . -- --at /tmp/baland.png -1200,-460 900
+## Birinchi qiymat — "x,z". Ikkinchisi (ixtiyoriy) — balandlik, metr.
+## Balandlik berilmasa, 25 m (odatdagi ko'z balandligi + biroz tepaga).
+func _capture_at(path: String, where: String, height_arg: String, pitch_arg: String) -> void:
+	var parts := where.split(",")
+	if parts.size() < 2:
+		print_rich("[color=#c8452f]--at uchun \"x,z\" kerak[/color]")
+		get_tree().quit(2)
+		return
+	var x := parts[0].to_float()
+	var z := parts[1].to_float()
+	var height: float = 25.0
+	if height_arg != "":
+		height = height_arg.to_float()
+	var pitch: float = SHOT_PITCH
+	if pitch_arg != "":
+		pitch = pitch_arg.to_float()
+
+	# Yo'lda bo'lsa, YO'L BO'YLAB qaraymiz — shunda chiziqlar, ko'prik
+	# va yo'l yonidagi relyef ko'rinadi.
+	# Kamera yo'nalishi: yaw=0 da oldinga qaragan (-Z), shuning uchun
+	# yaw = atan2(-dx, -dz).
+	var yaw := SHOT_YAW
+	var nearest := RoadNetwork.nearest_road_point(Vector2(x, z))
+	if float(nearest["masofa"]) < 60.0:
+		var d: Vector2 = nearest["yo'nalish"]
+		yaw = rad_to_deg(atan2(-d.x, -d.y))
+
+	var spot := Vector3(x, TerrainGen.height_at(x, z) + height, z)
+	if height > 60.0:
+		_hide_water(true)
+		_extend_far(4000.0)
+	# O'yinchi 120 m balandlikda 40 kadr davomida ERKIN TUSHADI
+	# (gravitatsiya ishlaydi) va surat butun boshqa balandlikdan
+	# olinadi. Shuning uchun avali kutib, so'ng JOYINI QAYTARIB
+	# turamiz — chunklar yuklangan, kamera esa aniq kerakli nuqtada.
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(spot, yaw, pitch)
+	await _settle(3)
 	_save_shot(path)
 
 

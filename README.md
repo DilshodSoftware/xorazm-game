@@ -30,6 +30,9 @@ loyiha bitta fayl bilan ishga tushadi.
 # Xorazm relyefining tekshiruvi (45 ta test)
 ~/Applications/godot --headless --path . -- --test-terrain
 
+# Yo'l tarmog'ining tekshiruvi (15 ta test)
+~/Applications/godot --headless --path . -- --test-roads
+
 # Butun orolning tekis rasm xaritasi (GPU'siz)
 ~/Applications/godot --headless --path . -- --terrainmap /tmp/map.png
 
@@ -38,6 +41,14 @@ loyiha bitta fayl bilan ishga tushadi.
 ~/Applications/godot --path . -- --aerial /tmp/a.png      # ko'tarilgan
 ~/Applications/godot --path . -- --nofog /tmp/f.png       # tumanisiz
 ~/Applications/godot --path . -- --shot /tmp/s.png --hud # diagnostika bilan
+
+# Istalgan nuqtadan, istalgan balandlikdan (burchak ham beriladi).
+# Kamera YO'L BO'YLAB qaraydi — yo'lni tekshirish uchun qulay.
+~/Applications/godot --path . -- --at /tmp/yo'l.png -745,180
+~/Applications/godot --path . -- --at /tmp/yuqori.png -745,13 260 -42
+
+# Nuqtaning relyefi, suv holati va eng yaqin yo'li
+~/Applications/godot --headless --path . -- --probe "-745,180;-745,812"
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
@@ -101,7 +112,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 0 | Muhit, ertalab yorug'ligi, til tizimi, Git | ✅ |
 | 1 | O'yinchi, FPS kamera, harakat, egilish, sakrash | ✅ |
 | 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ✅ |
-| 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ⬜ |
+| 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ✅ |
 | 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ⬜ |
 | 5 | O'zbek mashinalari + haydash fizikasi | ⬜ |
 | 6 | AI yo'l harakati, marshrutka, piyodalar | ⬜ |
@@ -144,9 +155,35 @@ to'ladi (ikkalasi ham bo'lgan edi).
 | Og'irlik | 19,6 m/s² (haqiqiy 9,8 — o'yin hissi uchun ikki barobar) |
 | Kuch | yugurishda 13/s, 0,9 s kutgandan keyin tiklanadi |
 
----
+### Yo'l tarmog'i
 
-## Tuzilma
+Xorazmda halqa yo'l **yo'q**. Lekin Amudaryo qirg'og'ida sel-suv
+himoya dambalari aynan orol atrofida qurilgan va yo'llar shu damlar
+ustida yuradi. Shu sababli bizning "halqa" — qirg'oqga moslangan
+damlar yo'li.
+
+| | |
+|---|---|
+| Tashqi halqa | ~48 km, **quruq yer tugagacha** har burchakda o'lchanadi |
+| Radial | 6 ta, Urganchdan, haqiqiy shaharlar yo'nalishiga qarab |
+| Shahar to'ri | Urganch — 150 × 130 m kvartal, doiraga sig'dirilgan |
+| Qishloq yo'llari | 8 ta, g'ishtli (qum rangli, chiziqsiz) |
+| Magistr | 14 m (4 tasma) · ko'cha 8 m (2 tasma) · qishloq 5 m |
+| Ko'prik | kanal kesishgan **har** joyda avtomatik (hozir 5 ta) |
+
+**Nima uchun halqa sun'iy ellipsa emas:** doimiy radiusli halqa janubda
+Amudaryoning ichiga tushib, ko'priksiz qismda suv ustida qolardi.
+Radiuslar endi har 2,5° da quruq yerni tekshirib, undan 220 m ichkarida
+o'tadi — xuddi haqiqiy damba qilgandek.
+
+**Nima uchun yer tekislanadi:** `TerrainGen.height_at` yo'llar ostidagi
+yeri tekislaydi, shuning uchun mashina kengaytirilgan yerning o'zi
+ustida haydaydi — alohida collision kerak emas va uzluksiz ishlaydi.
+
+Profil uch qadam bilan barqarorlashtiriladi: oyna bilan yumshtash
+(±200 m, 3 marta), **gradient cheklovi 1:40** va kesishmalarda
+profillarni o'rtalash. Cheklov muhim: Xorazm — dunyodagi eng tekis
+viloyatlardan biri, 2,5% dan tik yo'l bu yerda tabiiy emas.
 
 ```
 project.godot      # loyiha sozlamalari, autoload'lar, fizika qatlamlari
@@ -162,11 +199,14 @@ src/world/         # terrain_gen.gd     — BALANDLIKNING YAGONA MANBA
                    # khorezm_morning.gd — ertalab yorug'ligi
                    # physics_layers.gd  — qatlamlar
                    # debug_props.gd     (vaqtinchalik, 4-bosqichda o'chadi)
+src/world/roads/   # road_network.gd   — YO'L TARMOG'I: geometriya, tekislash
+                   # road_builder.gd    — ko'rinadigan yo'l, chiziq, ko'prik
 src/player/        # player.gd, camera_rig.gd
 src/main.gd        # o'yin ildizi
 scenes/            # main.tscn, player/player.tscn
 tools/             # player_selftest.gd — 27 ta test
                    # terrain_selftest.gd — 45 ta test
+                   # road_selftest.gd   — 15 ta test
                    # terrain_map.gd     — rasm xaritasi chizuvchisi
 ```
 
@@ -177,17 +217,24 @@ Har bir bosqichda avtomatik tekshiruv ishlaydi:
 ```bash
 ~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
 ~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
+~/Applications/godot --headless --path . -- --test-roads     # yo'llar (15)
 ~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
 ```
 
-Har ikkalasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
+Har uchasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
 
 **Bu nima uchun muhim.** 2-bosqichda tekshiruvlar bitta ko'rinmas xatoni
 topdi: chunk ostida bir necha kadrga teshik qolardi va o'yinchi havoga
 tushib ketardi. Chunklar soni va renderlash statistikasi **normal**
-ko'rinardi — faqat skrinshotga qarab sezildi. Yana uchta xato ham shu
-tarzda yashiringan edi. Kelgisi bosqichlarda (mashina, suzish, kurashish)
-ham shu poydevor kerak.
+ko'rinardi — faqat skrinshotga qarab sezildi.
+
+3-bosqichda esa **fazolaviy to'r** xatosi shunday yashiringan edi:
+diagonal yo'l kesimi katak chegarasini "sakrab" o'tib, o'sha katak
+belgilanmagan qolardi. Natija: yo'lning markazi tekislangan, 4 m
+yonidagi nuqta esa qo'lda qolgan — mashina yo'lda mayraydi, ko'prik
+kerak joylar topilmadi. Hech qanday vizual belgi yo'q edi. Shu bois
+`verify_index()` — har bir yo'l nuqtasi o'z katagida o'z yo'lini
+topishi tekshiriladi. Kelgisi bosqichlarda ham shu poydevor kerak.
 
 ## O'zbek tilida o'zgartirish
 

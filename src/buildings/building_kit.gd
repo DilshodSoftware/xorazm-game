@@ -69,12 +69,18 @@ static func wall_with_coping(builder: MeshBuilder, from: Vector2, to: Vector2,
 static func niche(builder: MeshBuilder, at: Vector3, width: float,
 		height: float, yaw: float) -> void:
 	var basis := Basis(Vector3.UP, yaw)
-	var half := basis * Vector3(width * 0.5, height * 0.5, 0.0)
-	builder.add_quad(
-		at - half, at + half,
-		at + half + basis * Vector3(0, height, 0),
-		at - half + basis * Vector3(0, height, 0),
-		Color("3b3128"), basis * Vector3(0, 0, 1), false)
+	# DIQQAT: to'rt burchak — to'g'ri TO'RTBURCHAK bo'lishi shart.
+	# Avval `at ± half` ga yana `Vector3(0, height, 0)` qo'shilardi,
+	# shuning uchun shakl "galtaq bow" bo'lib chiqardi va devorda
+	# QORA KREST ko'rinardi (barcha mahalla uylarida).
+	var q: Array[Vector3] = [
+		at + basis * Vector3(-width * 0.5, -height * 0.5, 0.0),
+		at + basis * Vector3(width * 0.5, -height * 0.5, 0.0),
+		at + basis * Vector3(width * 0.5, height * 0.5, 0.0),
+		at + basis * Vector3(-width * 0.5, height * 0.5, 0.0),
+	]
+	builder.add_quad(q[0], q[1], q[2], q[3], Color("3b3128"),
+		basis * Vector3(0, 0, 1), false)
 
 
 # ================================================================== TESHIKLAR
@@ -211,7 +217,6 @@ static func eave_beams(builder: MeshBuilder, from: Vector2, to: Vector2,
 	if direction.length_squared() < 0.0001:
 		return
 	var normal: Vector2 = direction.orthogonal().normalized()
-	var span: float = direction.length()
 	for i in count:
 		var t: float = (float(i) + 0.5) / float(count)
 		var p: Vector2 = from + direction * t
@@ -219,16 +224,17 @@ static func eave_beams(builder: MeshBuilder, from: Vector2, to: Vector2,
 		# bo'yicha bo'lishi shart. Aks holda nopiya devor ustida yotib
 		# qoladi va uyning chetida uzun "kalta" paydo bo'ladi.
 		var yaw: float = rad_to_deg(normal.angle())
-		# Ikki tomon uchun
-		for side in 2:
-			var sign_f: float = 1.0 if side == 0 else -1.0
-			var tip: Vector2 = p + normal * (length * sign_f)
-			var a := Vector3(p.x, y, p.y)
-			var b := Vector3(tip.x, y, tip.y)
-			# Nopiqa 7×9 sm, uzunligi 45 sm. Katta qilsak, uy ustida
-			# "narasimon taxta" qatori paydo bo'ladi.
-			builder.add_box((a + b) * 0.5, Vector3(0.07, 0.09, length), colour,
-				yaw, false)
+		# DIQQAT: faqat BITTA tomonga chiziladi. Ikki tomonga
+		# chizilsak, nopiya devor o'qida to'xtab, yuqoridan qaraganda
+		# "+" shaklida ko'rinadi va uyning chetida "tarqoq taxtalar"
+		# paydo bo'ladi. Haqiqiy nopiya devordan BIR tomonga chiqadi.
+		var tip: Vector2 = p + normal * length
+		var a := Vector3(p.x, y, p.y)
+		var b := Vector3(tip.x, y, tip.y)
+		# Nopiqa 7×9 sm, uzunligi 45 sm. Katta qilsak, uy ustida
+		# "narasimon taxta" qatori paydo bo'ladi.
+		builder.add_box((a + b) * 0.5, Vector3(0.07, 0.09, length), colour,
+			yaw, false)
 
 
 # ================================================================== TOM

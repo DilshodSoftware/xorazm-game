@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_houses_facing_street()
 	await _test_houses_stand_on_ground()
 	_test_geometry_bounds()
+	await _test_player_house_interior()
 
 	print("----------------------------------------")
 	print_rich("O'tdi: [color=#7fbf6a]%d[/color]   Xato: [color=#%s]%d[/color]" % [
@@ -213,6 +214,49 @@ func _test_geometry_bounds() -> void:
 	# Collision ham bo'lishi kerak
 	_check("Uy collision bor", builder.faces.size() > 100,
 		"(%d uchburchak nuqtasi)" % (builder.faces.size() / 3))
+
+
+## O'yinchi uyining ichida hech narsa havoda suzib qolmasligi kerak.
+##
+## DIQQAT: bu test NIMAGA uchun muhim. 4-bosqichda `_w` va
+## `PlayerHouse` yordamchilarida `origin.y` ga yana `ground` qo'shilgan
+## edi, shuning uchun BARCHA mebel va chiroq 2 × balandlikda, shift
+## ustida turardi. Ko'rishda bu sezilmaydi — mebel bor, lekin to'g'ri
+## joyda emas. Soniq esa darhol ko'rsatadi.
+func _test_player_house_interior() -> void:
+	var plot := Tandirchi.player_plot()
+	if plot.is_empty():
+		_check("O'yinchi uyi bor", false)
+		return
+
+	var centre: Vector2 = plot["markaz"]
+	var ground: float = TerrainGen.height_at(centre.x, centre.y)
+	var builder := MeshBuilder.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	# `inspect = true` — shift chizilmaydi, faqat ichki ko'rinadi
+	PlayerHouse.build_geometry(builder, plot, rng, true)
+
+	var low := INF
+	var high := -INF
+	var on_floor := 0
+	for v: Vector3 in builder.vertices:
+		var above: float = v.y - ground
+		low = minf(low, above)
+		high = maxf(high, above)
+		# Mebellarning eng pastki qismi pol o'rtasida ±30 sm
+		if absf(above - 0.15) < 0.30:
+			on_floor += 1
+
+	_check("Uy ichida narsa pol darajasida bor", on_floor > 40,
+		"(%d ta nuqta 0,15 m ±0,30 da)" % on_floor)
+	# Shift ustidagi eng baland narsa: devor 5,9 m + chiroq 2,72 m
+	# `low` va `high` YER USTIDAN o'lchangan (nisbiy) — shuning uchun
+	# 0 bilan solishtiriladi, `ground` bilan emas.
+	_check("Uy ichida hech narsa shift ustida emas", high < 6.4,
+		"(eng baland: yerdan %.2f m)" % high)
+	_check("Hech narsa yer ostida emas", low > -0.6,
+		"(eng past: yerdan %.2f m)" % low)
 
 
 # ------------------------------------------------------------------- Yordam

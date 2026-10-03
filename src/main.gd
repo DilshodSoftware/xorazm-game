@@ -16,7 +16,9 @@ const SHOT_PITCH := -4.0
 var player: Player
 var chunks: ChunkManager
 var buildings: BuildingManager
+var player_house: Dictionary = {}
 var _hud: Label
+var _prompt: Label
 var _hud_visible := false
 
 
@@ -36,7 +38,18 @@ func _ready() -> void:
 		RoadNetwork.roads().size(), RoadNetwork.total_length() / 1000.0])
 	print_rich("[color=#7fbf6a]Tandirchi:[/color] %d ta ko'cha, %d ta uy joyi" % [
 		Tandirchi.streets().size(), Tandirchi.plots().size()])
+
 	print_rich("[color=#7fbf6a]Boshqaruv:[/color] F1 yordam · F3 diagnostika")
+	print_rich("[color=#d9a441]Eshik:[/color] uy oldida E bosing — peshenta va xona eshiklari ochiladi")
+	if not player_house.is_empty():
+		var doors: Array = player_house.get("eshiklar", [])
+		for i in doors.size():
+			var d := doors[i] as HouseDoor
+			print_rich("  [color=#a89d8a]eshik %d: (%.1f, %.1f)[/color]" % [
+				i, d.global_position.x, d.global_position.z])
+		var inner: Vector3 = player_house.get("ichki", Vector3.ZERO)
+		print_rich("  [color=#a89d8a]uy markazi: (%.1f, %.1f)[/color]" % [
+			inner.x, inner.z])
 
 	_parse_cli()
 
@@ -59,6 +72,11 @@ func _build_world() -> void:
 	buildings = BuildingManager.new()
 	buildings.name = "Binolar"
 	add_child(buildings)
+
+	# O'yinchi uyi alohida quriladi: ichiga kiriladi, ichida yorug'lik
+	# va mebeller bor. Oddiy generator undan keyin keladi va o'sha uyni
+	# qayta quradi — shuning uchun bu tartib MUTLAQ.
+	player_house = PlayerHouse.build(self, OS.get_cmdline_user_args().has("--inspect"))
 
 
 ## O'yinchini Tandirchi mahallasida, uy oldida o'rnatadi.
@@ -90,6 +108,22 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if _hud_visible and _hud:
 		_hud.text = _diagnostics()
+	# Oyna o'yni ekran pastki markazida ushlab turadi
+	if _prompt != null and _prompt.visible:
+		var size := get_viewport().get_visible_rect().size
+		_prompt.size = Vector2(size.x, 0)
+		_prompt.position = Vector2(0, size.y - 130)
+
+
+func _on_interact_shown(text: String) -> void:
+	if _prompt != null:
+		_prompt.text = text
+		_prompt.visible = true
+
+
+func _on_interact_hidden() -> void:
+	if _prompt != null:
+		_prompt.visible = false
 
 
 # ------------------------------------------------------------------------ HUD
@@ -98,6 +132,23 @@ func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	layer.name = "HUD"
 	add_child(layer)
+
+	# --- Muloqot oynasi (E tugmasi) ---
+	_prompt = Label.new()
+	_prompt.name = "Muloqot"
+	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt.add_theme_font_size_override("font_size", 20)
+	_prompt.add_theme_color_override("font_color", Palette.UI_TEXT)
+	_prompt.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_prompt.add_theme_constant_override("shadow_offset_x", 2)
+	_prompt.add_theme_constant_override("shadow_offset_y", 2)
+	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prompt.visible = false
+	layer.add_child(_prompt)
+
+	# Hodisa oynani boshqaradi
+	EventBus.interact_shown.connect(_on_interact_shown)
+	EventBus.interact_hidden.connect(_on_interact_hidden)
 
 	_hud = Label.new()
 	_hud.position = Vector2(12, 10)
@@ -220,6 +271,9 @@ func _parse_cli() -> void:
 			TerrainMap.render(args[i + 1])
 			get_tree().quit(0)
 			return
+		if args[i] == "--inspect" and i + 1 < args.size():
+			_inspect(args[i + 1])
+			return
 		if args[i] == "--test-buildings":
 			var building_test := BuildingSelfTest.new()
 			building_test.host = self
@@ -244,6 +298,34 @@ func _parse_cli() -> void:
 			terrain_test.host = self
 			add_child(terrain_test)
 			return
+
+
+## Uyni shimolasiz qurib, ichini yuqoridan ko'rsatadi — mebel
+## joylashuvini bir qarashda tekshirish uchun.
+##     godot --path . -- --inspect /tmp/ichi.png
+func _inspect(path: String) -> void:
+	var plot := Tandirchi.player_plot()
+	var centre: Vector2 = plot["markaz"]
+	var yaw: float = plot["yaw"]
+	var basis := Basis(Vector3.UP, yaw)
+
+	# Xona markazi — maydon o'rtasidan uy orqasiga chuqurlik/2 + ROOM_DEPTH/2
+	var front: float = plot["front"]
+	var depth: float = plot["chuqur"]
+	var room_v: float = depth - CourtyardHouse.ROOM_DEPTH * 0.5
+	var room := Vector3(centre.x, 0.0, centre.y) + basis * Vector3(0.0, 0.0, room_v)
+
+	# Kamera xona ustida — rejali (flat) ko'rinish
+	var eye := room + Vector3(0.0, 25.0, 0.0) + basis * Vector3(0.0, 0.0, 10.0)
+	var ground: float = TerrainGen.height_at(eye.x, eye.z)
+	var look := Vector2(room.x - eye.x, room.z - eye.z).normalized()
+	var spot := Vector3(eye.x, ground + 25.0, eye.z)
+	var cam_yaw := rad_to_deg(atan2(-look.x, -look.y))
+	player.teleport(spot, cam_yaw, -75.0)
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(spot, cam_yaw, -75.0)
+	await _settle(3)
+	_save_shot(path)
 
 
 ## YALG'IZ bitta uyni qurib, uni ma'lum nuqtadan suratga oladi.

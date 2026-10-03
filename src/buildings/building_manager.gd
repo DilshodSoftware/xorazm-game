@@ -161,6 +161,11 @@ func _build_chunk(coord: Vector2i) -> void:
 
 	var count := 0
 	for plot: Dictionary in Tandirchi.plots():
+		# O'yinchi uyi alohida quriladi (ichi, mebelleri, chiroqlari
+		# bilan). Agar bu yerda yana qursak, ikkita uy ustma-ust
+		# tushadi va ichida yurib bo'lmaydi.
+		if plot.get("o'yinchi", false):
+			continue
 		var centre: Vector2 = plot["markaz"]
 		if not area.has_point(centre):
 			continue

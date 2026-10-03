@@ -35,6 +35,14 @@ signal mission_completed(mission_id: String)
 
 # --- Interfeys ---
 signal notice_posted(text: String, seconds: float)
+
+# --- Dunyo bilan muloqot (eshik, sandiq, televizor) ---
+## Oyna chiqdi: o'yinchi nimaga yaqin turibdi ("[E] Eshikni ochish")
+signal interact_shown(text: String)
+## Oyna yopildi — o'yinchi uzoqlashdi yoki ishlatdi
+signal interact_hidden
+## Amalda bajarildi
+signal interact_performed(action: String)
 signal input_mouse_captured(captured: bool)
 
 

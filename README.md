@@ -55,6 +55,9 @@ loyiha bitta fayl bilan ishga tushadi.
 
 # Bitta uyni qurib, ko'chadan ko'rish (uyni tuzatish uchun)
 ~/Applications/godot --path . -- --testhouse /tmp/uy.png
+
+# Uy ichini shimola ko'rib tekshirish (mebbel joylashuvi)
+~/Applications/godot --path . -- --inspect /tmp/ichi.png
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
@@ -119,7 +122,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 1 | O'yinchi, FPS kamera, harakat, egilish, sakrash | ✅ |
 | 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ✅ |
 | 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ✅ |
-| 4 | Tandirchi mahallasi va o'yinchi uyining ichi | 🚧 |
+| 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ✅ |
 | 5 | O'zbek mashinalari + haydash fizikasi | ⬜ |
 | 6 | AI yo'l harakati, marshrutka, piyodalar | ⬜ |
 | 7 | Urganch: baza, Al-Xorazmiy, Avesto bog'i, stansiya | ⬜ |
@@ -160,6 +163,37 @@ to'ladi (ikkalasi ham bo'lgan edi).
 | Sakrash | 1,0 m (tugma tez bo'shatilsa 0,58 m) |
 | Og'irlik | 19,6 m/s² (haqiqiy 9,8 — o'yin hissi uchun ikki barobar) |
 | Kuch | yugurishda 13/s, 0,9 s kutgandan keyin tiklanadi |
+
+### Tandirchi mahallasi
+
+Xorazmning eski mahallasi: ko'chalar **panjara emas, egilgan** va
+tor. Panjara faqat 1920–1950 yillarda sho'llik shaharlarda
+qo'llangan; Tandirchi o'sha davrdan oldin qurilgan.
+
+Xorazm uyining to'rt qoidasi shu yerda bajarilgan:
+
+1. **Ko'chaga qaragan devor tekis va baland** (2,45 m), derazasiz —
+   shahar ichida begona uyni ko'rishdan himoya va yozda salqin
+2. **Eshik chuqurda** — peshenta (taborxona) orqali, devorning yonida
+3. **Derazalar faqat hovliga qaraydi**, ko'chaga emas
+4. **Tom tekis**, shift ostida yog'och taronalar ko'rinadi
+
+| | |
+|---|---|
+| Ko'chalar | 8 ta — bitta asosiy (Kosiblar), 3 ta parallel mavze, 4 ta kesma |
+| Uy joylari | 85 ta (250 × 200 m maydonda) |
+| Uy | 9,5–14,5 m frontal · 11,5–15,5 m chuqur · 1–2 qavat |
+| Ko'chalar orasidagi masofa | 44 m (kamroq bo'lsa uylar ustma-ust tushadi) |
+| Devor poydevori (sokva) | 55 cm — ko'k-yashil yoki to'q, namdan himoya |
+| Daraxtlar | anor, nonak, sharak, qarag'ay, terak |
+
+Bino o'lchamlari **hech qachon kichiklashtirilmaydi** — Xorazm xalq
+uyi 10 × 15 m haqiqiy. Faqat shaharlar *orasidagi* masofa 1:20.
+
+**O'yinchi uyi** alohida quriladi: ichida peshenta → hovli → katta
+xona, oshxona va yotqona, an'anaviy mebellar (to'ragan, samovar,
+g'ilam, mayda, o'choq, karavot), elektr chiroq va ochiladigan eshik
+(E tugmasi).
 
 ### Yo'l tarmog'i
 
@@ -212,14 +246,18 @@ src/buildings/     # building_kit.gd   — Xorazm uyining qismlari (eshik, to'sh
                    # courtyard_house.gd — bitta hovli uy
                    # tandirchi.gd       — KO'CHALAR VA UY JOYLARI (ma'lumot)
                    # building_manager.gd— binolarni chunk'lar bo'yicha yuklash
+                   # furniture_kit.gd   — to'ragan, samovar, o'choq, karavot...
+                   # player_house.gd    — o'yinchi uyi: ichi, chiroq, eshiklar
+                   # house_door.gd      — ochiladigan eshik
 src/world/tree_kit.gd  — anor, nonak, qarag'ay, sharak, terak
+src/world/interactable.gd — "E" bilan ochiladigan narsalar
 src/player/        # player.gd, camera_rig.gd
 src/main.gd        # o'yin ildizi
 scenes/            # main.tscn, player/player.tscn
 tools/             # player_selftest.gd — 27 ta test
                    # terrain_selftest.gd — 45 ta test
                    # road_selftest.gd   — 15 ta test
-                   # building_selftest.gd — 14 ta test
+                   # building_selftest.gd — 17 ta test
                    # terrain_map.gd     — rasm xaritasi chizuvchisi
 ```
 
@@ -231,13 +269,20 @@ Har bir bosqichda avtomatik tekshiruv ishlaydi:
 ~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
 ~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
 ~/Applications/godot --headless --path . -- --test-roads     # yo'llar (15)
-~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (14)
+~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (17)
 ~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
 ```
 
 Har uchasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
 
-**Bu nima uchun muhim.** 2-bosqichda tekshiruvlar bitta ko'rinmas xatoni
+**Bu nima uchun muhim.** 4-bosqichda tekshiruv ikki jiddiy xatoni
+topdi: (1) joylashuv tekshiruvi sikl ichida `return` qilgani uchun
+faqat birinchi o'q tekshirilardi — 111 uydan 275 juftlik ustma-ust
+tushgan edi; (2) bino yordamchilarida `origin.y` ga yana `ground`
+qo'shilardi, shuning uchun barcha mebel va chiroq shift ustida
+turgan edi. Ikkalasi ham ko'rishda sezilmaydi — faqat soniq ushladi.
+
+2-bosqichda esa shunday xato topildi:
 topdi: chunk ostida bir necha kadrga teshik qolardi va o'yinchi havoga
 tushib ketardi. Chunklar soni va renderlash statistikasi **normal**
 ko'rinardi — faqat skrinshotga qarab sezildi.

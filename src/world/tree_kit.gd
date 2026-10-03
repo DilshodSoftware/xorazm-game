@@ -170,14 +170,18 @@ static func _canopy_tapered(builder: MeshBuilder, base: Vector3,
 static func _leaf(builder: MeshBuilder, at: Vector3, yaw: float, tilt: float,
 		size: float, dark: Color, light: Color, rng: RandomNumberGenerator) -> void:
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)
-	var half := basis * Vector3(size * 0.5, size * 0.5, 0)
 	var normal := (basis * Vector3(0, 0, 1)).normalized()
 	var colour: Color = dark.lerp(light, rng.randf())
-	# Barg kvadratchasi — biroz yassilangan, chetlari qo'polg'ina
-	# qisqa tushiriladi (cho'zilan "nishon" bo'lib qolmasligi uchun)
-	var tall := basis * Vector3(0, size * 0.78, 0)
+	# DIQQAT: to'rt burchak — haqiqiy TO'RTBURCHAK. `at ± half` ga
+	# yana vertikal ofset qo'shilsa, shakl "galtaq bow" bo'ladi va
+	# daraxt "kaltak bargli nishonlar" ko'rinishida chiqadi.
+	var h := size * 0.5
+	var w := size * 0.34
 	builder.add_quad(
-		at - half, at + half, at + half + tall, at - half + tall,
+		at + basis * Vector3(-w, -h, 0.0),
+		at + basis * Vector3(w, -h, 0.0),
+		at + basis * Vector3(w, h, 0.0),
+		at + basis * Vector3(-w, h, 0.0),
 		colour, normal, false)
 
 

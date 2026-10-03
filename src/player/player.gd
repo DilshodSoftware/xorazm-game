@@ -64,6 +64,8 @@ var _mouse_sensitivity := 0.0024
 
 
 func _ready() -> void:
+	# Hududlar (eshik, sandiq) o'yinchini taniishi uchun guruh kerak
+	add_to_group("player")
 	collision_layer = PhysicsLayers.PLAYER
 	collision_mask = PhysicsLayers.PLAYER_MASK
 
@@ -80,10 +82,45 @@ func _ready() -> void:
 
 # --------------------------------------------------------------- Sichqoncha
 
+## Yaqinidagi muloqot narsalari (eshik, sandiq, televizor).
+var _interactables: Array[Node] = []
+
+
+func register_interactable(what: Node) -> void:
+	if not _interactables.has(what):
+		_interactables.append(what)
+
+
+func unregister_interactable(what: Node) -> void:
+	_interactables.erase(what)
+
+
+## E bosilganda eng yaqin muloqot narsasi ishlaydi.
+func try_interact() -> void:
+	var best: Node = null
+	var best_distance := INF
+	for what: Node in _interactables:
+		if not is_instance_valid(what) or not what.has_method("try_use"):
+			continue
+		if not what.is_offered():
+			continue
+		var distance: float = global_position.distance_to(
+			what.get_parent().global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = what
+	if best != null:
+		best.try_use(self)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Sichqoncha qo'yib yuborilgan — qayta ushla
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		Game.capture_mouse()
+		return
+
+	if event.is_action_pressed("interact"):
+		try_interact()
 		return
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:

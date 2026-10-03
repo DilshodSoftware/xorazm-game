@@ -31,6 +31,16 @@ extends RefCounted
 
 enum Style { MODERN, OLD_SAMAN, HALF }
 
+## Eshiklarni chizish kerakmi? O'yinchi uyida haqiqiy, ochiladigan
+## eshiklar qo'yiladi (`HouseDoor`) — ular ko'p geometriya talab qiladi,
+## shuning uchun statik chizilgan eshik kerak emas.
+static var _doors := true
+
+## Shimbani va uning ustidagi devorni chizmaslik. Faqat `--inspect`
+## (shimola qaraganda) uchun — mebel joylashuvini bir qarashda
+## ko'rish kerak.
+static var _skip_roof := false
+
 const MIN_FRONT := 9.5
 const MAX_FRONT := 15.5
 const MIN_DEPTH := 12.5
@@ -50,9 +60,12 @@ const ROOM_DEPTH := 5.2
 ## [param rng]       — tasodifiy manba
 static func build(builder: MeshBuilder, centre: Vector2, yaw: float,
 		front: float, depth: float, storeys: int,
-		rng: RandomNumberGenerator, style: int = Style.MODERN) -> void:
+		rng: RandomNumberGenerator, style: int = Style.MODERN,
+		decorative_doors: bool = true, skip_roof: bool = false) -> Dictionary:
 	var ground: float = TerrainGen.height_at(centre.x, centre.y)
 	var basis := Basis(Vector3.UP, yaw)
+	_doors = decorative_doors
+	_skip_roof = skip_roof
 	# DIQQAT: bu funksiya ichida `v = 0` — KO'CHA CHEGARASI (uyning
 	# old devori). `centre` esa — BIR MAYDONNING O'RTASI. Shu sababli
 	# boshlang'ich nuqtani yarim chuqurlikka orqaga suramiz. Aks holda
@@ -111,6 +124,23 @@ static func build(builder: MeshBuilder, centre: Vector2, yaw: float,
 		half - 1.7, courtyard_mid - 1.1, ground)
 	_tandyr(builder, tandir_at)
 
+	# DIQQAT: bu nuqtalarni qaytaramiz. Uchinchidan tashqari bino
+	# yig'iladi va keyin kerak bo'lmaydi — lekin o'yinchi uyi uchun
+	# JUCHTA JOY muhim: eshiklar shu yerda turadi. Ular qaytarilmasa,
+	# eshikni aniq joyga qo'yib bo'lmaydi (ko'chadan ichkariga
+	# qaragan tomon boshqacha chiqadi).
+	return {
+		"darvoza": _w(origin, basis, gate_u, 0.0, ground),
+		"peshenta_eshigi": _w(origin, basis, gate_u, PORCH_DEPTH, ground),
+		"xona_eshigi": _w(origin, basis, 0.0, room_v0, ground),
+		"hovli": _w(origin, basis, 0.0, courtyard_mid, ground),
+		"burchak": yaw,
+		"old": basis * Vector3(0, 0, 1),
+		"yon": basis * Vector3(1, 0, 0),
+		"kenglik": front,
+		"chuqur": depth,
+	}
+
 
 # ------------------------------------------------------------------ Bo'laklar
 
@@ -153,10 +183,11 @@ static func _porch(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		0.30, coping)
 
 	# Eshik — peshenta oxirida, hovliga qaragan
-	var door_at: Vector3 = _w(origin, basis, gate_u, PORCH_DEPTH - 0.14,
-		ground + BuildingKit.DOOR_HEIGHT * 0.5)
-	BuildingKit.plank_door(builder, door_at, gate_w * 0.86,
-		BuildingKit.DOOR_HEIGHT, rad_to_deg(basis.get_euler().y) + PI)
+	if _doors:
+		var door_at: Vector3 = _w(origin, basis, gate_u, PORCH_DEPTH - 0.14,
+			ground + BuildingKit.DOOR_HEIGHT * 0.5)
+		BuildingKit.plank_door(builder, door_at, gate_w * 0.86,
+			BuildingKit.DOOR_HEIGHT, rad_to_deg(basis.get_euler().y) + PI)
 
 	# Peshenta yon devorlariga ravoq
 	for side in 2:
@@ -209,10 +240,11 @@ static func _rooms(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		builder.add_wall(a, b, ground, top - ground, t, wall, false)
 
 	# Eshik
-	var door_at: Vector3 = _w(origin, basis, centre_u, v0 - t * 0.5,
-		ground + BuildingKit.DOOR_HEIGHT * 0.5)
-	BuildingKit.plank_door(builder, door_at, door_w * 0.95,
-		BuildingKit.DOOR_HEIGHT, rad_to_deg(basis.get_euler().y))
+	if _doors:
+		var door_at: Vector3 = _w(origin, basis, centre_u, v0 - t * 0.5,
+			ground + BuildingKit.DOOR_HEIGHT * 0.5)
+		BuildingKit.plank_door(builder, door_at, door_w * 0.95,
+			BuildingKit.DOOR_HEIGHT, rad_to_deg(basis.get_euler().y))
 
 	# Birinchi qavat derazalari
 	var facade_yaw: float = rad_to_deg(basis.get_euler().y) + PI
@@ -271,7 +303,8 @@ static func _rooms(builder: MeshBuilder, origin: Vector3, basis: Basis,
 	# Shift
 	var r0: Vector2 = _p(origin, basis, u0, v0)
 	var r1: Vector2 = _p(origin, basis, u1, v1)
-	BuildingKit.flat_roof(builder, r0, r1, top + 0.12, roof)
+	if not _skip_roof:
+		BuildingKit.flat_roof(builder, r0, r1, top + 0.12, roof)
 	# Nopiya — shift PLITASINING ostida, 20 sm pastda. Ustida bo'lsa,
 	# taronalar shifit ustidan chiqib, uyga "qalin taxta halqa" beradi.
 	BuildingKit.eave_beams(builder, r0, r1, top - 0.32,
@@ -289,9 +322,15 @@ static func _tandyr(builder: MeshBuilder, at: Vector3) -> void:
 # ------------------------------------------------------------------ Yordam
 
 ## Mahalliy koordinata (u = ko'cha bo'ylab, v = uy ichiga) → dunyo.
+##
+## DIQQAT: `y` — MUTLAQ balandlik (yer ustidagi), nisbiy emas.
+## `origin.y` allaqachon yer balandligi teng bo'lgani uchun, agar yana
+## `ground` qo'shilsa, natija 2 × balandlik bo'lib qolardi — barcha
+## mebel, daraxt va eshik havoda suzib yotgan bo'lardi. Shuning uchun
+## offset `y - origin.y` qilinadi.
 static func _w(origin: Vector3, basis: Basis, u: float, v: float,
 		y: float) -> Vector3:
-	return origin + basis * Vector3(u, y, v)
+	return origin + basis * Vector3(u, y - origin.y, v)
 
 
 ## XZ nuqtasi (mahalliy koordinatalardan).

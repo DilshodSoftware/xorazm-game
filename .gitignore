@@ -1,0 +1,18 @@
+# Godot 4
+.godot/
+/android/
+export_presets.cfg
+*.translation
+
+# Mono / C# (ishlatilmaydi, lekin safety uchun)
+.mono/
+data_*/
+mono_crash.*.json
+
+# Tizim
+.DS_Store
+Thumbs.db
+*~
+
+# Linux AppImage chmod artefaktlari
+*.AppImage

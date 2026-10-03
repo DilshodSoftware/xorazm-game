@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Xorazm: ertalabki quyosh va Xiva minorasi -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6f9cc4"/>
+      <stop offset="62%" stop-color="#e3c79b"/>
+      <stop offset="100%" stop-color="#e9b877"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c9a874"/>
+      <stop offset="100%" stop-color="#a98a5c"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3fb2bf"/>
+      <stop offset="100%" stop-color="#1f5f8c"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="20" fill="url(#sky)"/>
+  <circle cx="90" cy="74" r="17" fill="#ffeed2" opacity="0.85"/>
+
+  <path d="M0 92 Q32 84 64 92 T128 90 V128 H0 Z" fill="url(#sand)"/>
+
+  <!-- Islam Xo'ja minorasi (57 m) -->
+  <g>
+    <path d="M28 92 L30 44 L34 44 L36 92 Z" fill="url(#tile)"/>
+    <path d="M24 92 h20 v4 H24 Z" fill="#1f5f8c"/>
+    <rect x="29" y="30" width="6" height="15" fill="url(#tile)"/>
+    <circle cx="32" cy="27" r="5" fill="#e2d5b8"/>
+    <path d="M32 21 l4 4 h-8 Z" fill="#d9a441"/>
+  </g>
+
+  <!-- Kalta Minor (29 m) -->
+  <g>
+    <path d="M72 92 C71 74 74 62 78 56 L86 56 C90 62 93 74 92 92 Z" fill="url(#tile)"/>
+    <ellipse cx="82" cy="55" rx="4" ry="3" fill="#2f9ba8"/>
+    <path d="M66 92 h32 v5 H66 Z" fill="#1f5f8c"/>
+  </g>
+
+  <!-- Ichan Qal'a devori -->
+  <rect x="0" y="82" width="128" height="7" fill="#bd9766"/>
+  <g fill="#bd9766">
+    <rect x="14" y="72" width="7" height="10"/>
+    <rect x="104" y="70" width="8" height="12"/>
+    <rect x="52" y="74" width="6" height="8"/>
+  </g>
+</svg>

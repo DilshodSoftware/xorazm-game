@@ -1,0 +1,118 @@
+{
+  "_meta": {
+    "til": "O'zbek",
+    "kod": "uz",
+    "yo'nalish": "chapdan-o'ngga"
+  },
+
+  "oyin_nomi": "Xorazm",
+
+  "hud": {
+    "samar": "Samar",
+    "kuch": "Kuch",
+    "zaxira": "Zaxira",
+    "tezlik": "Tezlik",
+    "yoqilgan": "Yoqilgan",
+    "pul": "Pul",
+    "kmo_soat": "km/soat",
+    "qurolish": "Qurolash",
+    "vaqt": "Vaqt"
+  },
+
+  "holat": {
+    "tirik": "Tirik",
+    "og_ish": "Og'ish",
+    "yugurish": "Yugurish",
+    "hajjda": "Mashinada",
+    "nishon": "Nishon"
+  },
+
+  "amal": {
+    "kirish": "Kirish",
+    "chiqish": "Chiqish",
+    "minish": "Mashinaga minish",
+    "tushish": "Mashinadan tushish",
+    "qo_ng_iroq": "Qo'ng'iroq",
+    "gaz": "Gaz",
+    "tormoz": "Tormoz",
+    "burish": "Burish",
+    "qayta_zaxira": "Qayta zaxiralash"
+  },
+
+  "mahalla": {
+    "tandirchi": "Tandirchi mahallasi",
+    "arboblar": "Arboblar mahallasi",
+    "qosiblar": "Kosiblar ko'chasi",
+    "alpomish": "Alpomish ko'chasi",
+    "qumrabod": "Qumrabod mahallasi",
+    "baho": "Xayrli tong",
+    "tandir_tayyor": "Tandir tayyor, non chiqyapti",
+    "marshrutka_keldi": "Marshrutka keldi!"
+  },
+
+  "joylar": {
+    "urganch": "Urganch",
+    "xiva": "Xiva",
+    "ichan_qala": "Ichan Qal'a",
+    "kalta_minor": "Kalta Minor",
+    "islam_xoja": "Islam Xo'ja minorasi",
+    "juma_masjidi": "Juma masjidi",
+    "kunya_ark": "Kunya Ark",
+    "tosh_hauli": "Tosh Hauli saroyi",
+    "eski_baza": "Eski baza",
+    "avesto_bogi": "Avesto bog'i",
+    "alxorazmiy": "Al-Xorazmiy majmuasi",
+    "stansiya": "Temir yo'l stansiyasi",
+    "shavat_kanali": "Shavat kanali",
+    "xonqa": "Xonqa",
+    "shovot": "Shovot",
+    "gurlan": "Gurlan",
+    "xazorasp": "Xazorasp",
+    "pitnak": "Pitnak",
+    "yangibozor": "Yangibozor",
+    "qoshkopir": "Qo'shko'pir",
+    "amudaryo": "Amudaryo"
+  },
+
+  "mashinalar": {
+    "spark": "Chevrolet Spark",
+    "lacetti": "Chevrolet Lacetti",
+    "cobalt": "Chevrolet Cobalt",
+    "malibu": "Chevrolet Malibu",
+    "uzauto": "UzAuto",
+    "marshrutka": "Marshrutka",
+    "kamaz": "KamAZ yuk mashinasi",
+    "avtobus": "Shahar avtobusi",
+    "tugmani_yoqotdingiz": "Tugmani yo'qotdingiz",
+    "yoqilgan_yangi": "Yo'qilgani yangi"
+  },
+
+  "vazifa": {
+    "boshlangich_sarlavha": "Uyg'onish",
+    "boshlangich_1": "Uydan chiq",
+    "boshlangich_2": "Kosiblar ko'chasidan o'tib ket",
+    "tugadi": "Vazifa bajarildi",
+    "yangilandi": "Yangi vazifa: {0}",
+    "olindi": "Vazifa olindi: {0}"
+  },
+
+  "xabar": {
+    "saqlandi": "Saqlandi",
+    "yuklandi": "Yuklandi",
+    "xotira_toliq": "Xotira to'ldi",
+    "sozlandi": " sozlandi",
+    "ishga_tayyor": "Xorazm ishga tayyor"
+  },
+
+  "boshqaruv": {
+    "harakat": "HARAKAT",
+    "saf_turish": "(saf)",
+    "chiqish": "(Chiqish)"
+  },
+
+  "tarix": {
+    "0": "Tandirchi mahallasi, Kosiblar ko'chasi, soat 7:00",
+    "1": "Xorazm viloyati, Urganch shahri",
+    "2": "Amudaryo qirg'og'i"
+  }
+}

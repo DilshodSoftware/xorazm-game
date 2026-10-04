@@ -15,7 +15,6 @@ extends Node3D
 
 var _chunks: Dictionary = {}          # coord -> Node3D
 var _generated_total := 0
-var _house_total := 0
 var _last_centre := Vector2i(99999, 99999)
 var _pending: Array[Vector2i] = []
 
@@ -159,7 +158,6 @@ func _build_chunk(coord: Vector2i) -> void:
 	var area := Rect2(
 		Vector2(coord.x * size, coord.y * size), Vector2(size, size))
 
-	var count := 0
 	for plot: Dictionary in Tandirchi.plots():
 		# O'yinchi uyi alohida quriladi (ichi, mebelleri, chiroqlari
 		# bilan). Agar bu yerda yana qursak, ikkita uy ustma-ust
@@ -173,7 +171,6 @@ func _build_chunk(coord: Vector2i) -> void:
 		CourtyardHouse.build(builder, centre, float(plot["yaw"]),
 			float(plot["front"]), float(plot["chuqur"]), int(plot["qavat"]),
 			rng, int(plot["uslub"]))
-		count += 1
 
 	if builder.is_empty():
 		return
@@ -185,7 +182,6 @@ func _build_chunk(coord: Vector2i) -> void:
 	builder.commit_collision(node, "Kolpasi")
 	_chunks[coord] = node
 	_generated_total += 1
-	_house_total += count
 
 
 ## Barcha kerakli binolarni darhol yuklaydi (teleportdan keyin).
@@ -203,17 +199,9 @@ static func _coord_of(point: Vector3) -> Vector2i:
 	return Vector2i(floori(point.x / size), floori(point.z / size))
 
 
-## Diagnostika: hozirda nechta uy qurilgan.
-func house_count() -> int:
-	return _house_total
-
-
+## Diagnostika.
 func generated_total() -> int:
 	return _generated_total
-
-
-func loaded_chunks() -> int:
-	return _chunks.size()
 
 
 func pending_count() -> int:

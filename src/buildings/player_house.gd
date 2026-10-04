@@ -103,7 +103,6 @@ static func build_geometry(builder: MeshBuilder, plot: Dictionary,
 	builder.add_plate(f0, f1, ground + ceiling, 0.20, Palette.ROOF_DECK, false)
 
 	# ================================================================= KATTA XONA
-	var living := _at(origin, basis, front * 0.28, room_v0 + 2.0, ground)
 	# To'ragan — hovliga qaragan devor yonida (derazaning ostida)
 	FurnitureKit.toragan(builder,
 		_at(origin, basis, front * 0.34, room_v0 + 0.36, ground),

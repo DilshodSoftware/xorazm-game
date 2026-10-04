@@ -277,6 +277,10 @@ func _parse_cli() -> void:
 		if args[i] == "--inspect" and i + 1 < args.size():
 			_inspect(args[i + 1])
 			return
+		if args[i] == "--test-mesh":
+			var mesh_test := MeshSelfTest.new()
+			add_child(mesh_test)
+			return
 		if args[i] == "--test-buildings":
 			var building_test := BuildingSelfTest.new()
 			building_test.host = self

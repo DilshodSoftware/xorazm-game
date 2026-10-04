@@ -26,10 +26,6 @@ var faces := PackedVector3Array()
 var want_collision := false
 
 
-func vertex_count() -> int:
-	return vertices.size()
-
-
 func is_empty() -> bool:
 	return vertices.is_empty()
 
@@ -70,49 +66,53 @@ func add_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, colour: Color,
 	add_triangle(a, c, d, colour, normal, collision)
 
 
-## Ikki qatlamli kvadrat: yuqori yuzasi va pastki yuzasi.
-## Yer ostidagi to'shlar (masalan, ko'prik ushigining tagi) uchun.
-func add_slab(top_a: Vector3, top_b: Vector3, top_c: Vector3, top_d: Vector3,
-		bottom: float, colour: Color) -> void:
-	var drop := Vector3(0, bottom, 0)
-	add_quad(top_a, top_b, top_c, top_d, colour)
-	add_quad(top_d + drop, top_c + drop, top_b + drop, top_a + drop, colour)
-
-
 # ------------------------------------------------------------------ Shakllar
 
 ## Parallelepiped. `centre` — markazi, `size` — tam o'lchamlari.
 func add_box(centre: Vector3, size: Vector3, colour: Color,
 		yaw: float = 0.0, collision: bool = true) -> void:
 	var h := size * 0.5
-	var corners: Array[Vector3] = []
-	# Burilishni oldindan hisoblab, keyin aylantiramiz
-	var basis := Basis(Vector3.UP, yaw)
-	for sx in [-1.0, 1.0]:
-		for sy in [-0.5, 0.5]:
-			for sz in [-1.0, 1.0]:
-				corners.append(
-					centre + basis * Vector3(h.x * sx, size.y * sy, h.z * sz))
-	var c := _order_box(corners)
-	# c[0..3] pastki (y0), c[4..7] yuqori (y1); har yuzada VERTIKAL QARASHDA
-	# soat mili bo'lishi uchun quyidagi tartib ishlatiladi.
-	add_quad(c[0], c[1], c[2], c[3], colour, -Vector3.UP, collision)   # past
-	add_quad(c[7], c[6], c[5], c[4], colour, Vector3.UP, collision)    # yuqori
-	add_quad(c[4], c[5], c[1], c[0], colour, -basis.z, collision)      # orqa
-	add_quad(c[6], c[7], c[3], c[2], colour, basis.z, collision)       # old
-	add_quad(c[5], c[6], c[2], c[1], colour, basis.x, collision)       # o'ng
-	add_quad(c[7], c[4], c[0], c[3], colour, -basis.x, collision)      # chap
+	var b := Basis(Vector3.UP, yaw)
+	var at := func(sx: float, sy: float, sz: float) -> Vector3:
+		return centre + b * Vector3(h.x * sx, h.y * sy, h.z * sz)
+
+	# 8 burchak. Har bir yuzada to'rtta burchak bir tekislikda bo'lishi
+	# SHART — aks holda "galtaq bow" (o'ziga o'ralgan) kvadrat chiqadi.
+	# DIQQAT: `at.call()` Variant qaytaradi, shuning uchun tur
+	# aniq ko'rsatiladi (`var a: Vector3 = ...`) — aks holda GDScript
+	# ogohlantirish beradi va loyiha xato sifatida to'xtaydi.
+	var a: Vector3 = at.call(-1, -1, -1)   # chap-yuqori-old
+	var c: Vector3 = at.call(1, -1, -1)    # o'ng-yuqori-old
+	var e: Vector3 = at.call(1, 1, -1)     # o'ng-past-old
+	var g: Vector3 = at.call(-1, 1, -1)    # chap-past-old
+	var b2: Vector3 = at.call(-1, -1, 1)   # chap-yuqori-orqa
+	var d: Vector3 = at.call(1, -1, 1)     # o'ng-yuqori-orqa
+	var f: Vector3 = at.call(1, 1, 1)      # o'ng-past-orqa
+	var h2: Vector3 = at.call(-1, 1, 1)    # chap-past-orqa
+
+	_face(a, c, e, g, -b.z, colour, collision)      # old
+	_face(d, f, h2, b2, b.z, colour, collision)     # orqa
+	_face(a, b2, d, c, -b.y, colour, collision)     # yuqori
+	_face(g, e, f, h2, b.y, colour, collision)      # past
+	_face(c, d, f, e, b.x, colour, collision)      # o'ng
+	_face(a, g, h2, b2, -b.x, colour, collision)    # chap
 
 
-## Kubning 8 burchagini 4 pastki + 4 yuqori bo'lib qaytaradi.
-static func _order_box(corners: Array[Vector3]) -> Array:
-	# corners tartibi: sx(-1,+1) × sy(-.5,+.5) × sz(-1,+1)
-	# → 0:(-,-,-) 1:(-,-,+) 2:(-,+,-) 3:(-,+,+) 4:(+,-,-) 5:(+,-,+)
-	#   6:(+,+,-) 7:(+,+,+)
-	return [
-		corners[0], corners[1], corners[3], corners[2],   # past
-		corners[4], corners[5], corners[7], corners[6],   # yuqori
-	]
+## Yuzani chizadi — burilish TASHQARIGA qarab bo'lishini o'zi
+## tekshiradi.
+##
+## DIQQAT: bu qat'iy tekshiruv chiqarmasligimiz uchun muhim. Avval
+## burchaklar qo'lda ketma-ket yozilgan edi va 6 yuzadan ikkitasi
+## o'ziga o'ralgan "bowtie" bo'lib chiqardi (natija: noto'g'ri
+## yoritilish va geometriya buzilishi). Endi tartibni funksiya
+## o'zi to'g'rilaydi — yangi yuz qo'shsak ham xato chiqmaydi.
+func _face(a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+		outward: Vector3, colour: Color, collision: bool) -> void:
+	var normal := (b - a).cross(c - a)
+	if normal.dot(outward) < 0.0:
+		add_quad(a, d, c, b, colour, outward, collision)
+	else:
+		add_quad(a, b, c, d, colour, outward, collision)
 
 
 ## Silindr (tarona, daraxt poyi, quvur). Uchlari beriladi.
@@ -144,24 +144,28 @@ func add_cylinder(bottom: Vector3, top: Vector3, radius: float, sides: int,
 		previous_bottom = ring_bottom
 		previous_top = ring_top
 
-	# Ust va tag yopishlari
-	_add_cap(top, up, radius, sides, side, other, colour, false)
-	_add_cap(bottom, -up, radius, sides, side, other, colour, collision)
+	# Ust va tag yopishlari.
+	# DIQQAT: qaysi tomon burilishi `outward` VECTORI bo'yicha
+	# aniqlanadi. Avval `normal.y >= 0` qilib tekshirilardi — bu
+	# faqat vertikal silindrda to'g'ri. Diagonal silindrda (masalan
+	# yotqotilgan mozdok) noto'g'ri buriladi.
+	_cap(top, up, radius, sides, side, other, colour, false)
+	_cap(bottom, -up, radius, sides, side, other, colour, collision)
 
 
-func _add_cap(centre: Vector3, normal: Vector3, radius: float,
+func _cap(centre: Vector3, outward: Vector3, radius: float,
 		sides: int, side: Vector3, other: Vector3, colour: Color,
 		collision: bool) -> void:
-	var first := centre
 	for i in range(1, sides + 1):
 		var a1: float = TAU * float(i - 1) / float(sides)
 		var a2: float = TAU * float(i) / float(sides)
 		var p1: Vector3 = centre + (side * cos(a1) + other * sin(a1)) * radius
 		var p2: Vector3 = centre + (side * cos(a2) + other * sin(a2)) * radius
-		if normal.y >= 0.0:
-			add_triangle(first, p1, p2, colour, normal, collision)
+		var normal := (p1 - centre).cross(p2 - centre)
+		if normal.dot(outward) < 0.0:
+			add_triangle(centre, p2, p1, colour, outward, collision)
 		else:
-			add_triangle(first, p2, p1, colour, normal, collision)
+			add_triangle(centre, p1, p2, colour, outward, collision)
 
 
 ## G'isht yoki suvaloq devori: berilgan ikki nuqta orasida.
@@ -190,6 +194,12 @@ func add_wall(from: Vector2, to: Vector2, base_y: float, height: float,
 
 
 ## Gorizontal plita (tom, shift, ko'prik ushigining tagi).
+##
+## DIQQAT: yon devorlari ham chiziladi. Avval faqat yuqori va pastki
+## yuzalar qurilardi, yon devorlar esa qo'lda `faces` ga qo'shilar edi
+## — ya'ni KO'RINMAYDIGAN collision. Natijada shiftlar qog'ozdek
+## bir yuzali, chetlari yo'q edi. Endi yon devorlar ham geometriya
+## (va shu bilan ko'rinadigan ham, uriladigan ham).
 func add_plate(from: Vector2, to: Vector2, y: float, thickness: float,
 		colour: Color, collision: bool = true) -> void:
 	var direction: Vector2 = to - from
@@ -199,27 +209,22 @@ func add_plate(from: Vector2, to: Vector2, y: float, thickness: float,
 	var n := Vector3(side.x, 0.0, side.y)
 	var a := Vector3(from.x, y, from.y)
 	var b := Vector3(to.x, y, to.y)
-
-	add_slab(a - n, b - n, b + n, a + n, thickness, colour)
-
-	if not collision:
-		return
-	# Plitaning yon devorlari ham collision'ga kerak — ustiga qadam
-	# tushishi kerak, ichiga emas
 	var drop := Vector3(0, -thickness, 0)
-	faces.append(a - n)
-	faces.append(b - n)
-	faces.append(b - n + drop)
-	faces.append(a - n)
-	faces.append(b - n + drop)
-	faces.append(a - n + drop)
 
-	faces.append(b + n)
-	faces.append(a + n)
-	faces.append(a + n + drop)
-	faces.append(b + n)
-	faces.append(a + n + drop)
-	faces.append(b + n + drop)
+	var a_out := a - n
+	var b_out := b - n
+	var a_in := a + n
+	var b_in := b + n
+
+	# Yuqori va pastki yuzalar
+	add_quad(a_out, b_out, b_in, a_in, colour, Vector3.UP, collision)
+	add_quad(a_in + drop, b_in + drop, b_out + drop, a_out + drop,
+		colour, -Vector3.UP, collision)
+	# Yon devorlar — qalinlik ko'rinadi
+	_face(a_out, b_out, b_out + drop, a_out + drop, -n, colour, collision)
+	_face(b_in, a_in, a_in + drop, b_in + drop, n, colour, collision)
+	_face(b_out, b_in, b_in + drop, b_out + drop, b - a, colour, collision)
+	_face(a_in, a_out, a_out + drop, a_in + drop, a - b, colour, collision)
 
 
 # ------------------------------------------------------------------ Natija
@@ -284,13 +289,3 @@ func commit_collision(parent: Node3D, node_name: String) -> StaticBody3D:
 	body.add_child(col)
 	parent.add_child(body)
 	return body
-
-
-## Mesh va collision'ni bitta tugunga joylaydi.
-func commit_all(parent: Node3D, node_name: String, roughness: float = 0.92) -> Node3D:
-	var holder := Node3D.new()
-	holder.name = node_name
-	parent.add_child(holder)
-	commit(holder, "Mesh", roughness)
-	commit_collision(holder, "Kolpasi")
-	return holder

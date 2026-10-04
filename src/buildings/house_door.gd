@@ -107,9 +107,3 @@ func _process(delta: float) -> void:
 	if absf(rotation.y - _target) < 0.0005:
 		return
 	rotation.y = move_toward(rotation.y, _target, deg_to_rad(SPEED) * delta)
-
-
-## Eshikning ochiq turgan nuqtasi (o'tish uchun).
-func passage_centre() -> Vector3:
-	return global_position + Vector3(0, 1.0, 0) \
-		+ Vector3(sin(rotation.y), 0, cos(rotation.y)) * (_width * 0.5)

@@ -154,39 +154,6 @@ static func plank_door(builder: MeshBuilder, at: Vector3, width: float,
 			height * 0.5 - panel_height - 0.08, 0.024, yaw + PI * 0.5, colour)
 
 
-## Yuk mashinasi eshigi (keng, temir, ikki bo'lakli).
-static func metal_gate(builder: MeshBuilder, from: Vector2, to: Vector2,
-		base_y: float, height: float) -> void:
-	var direction: Vector2 = to - from
-	var length: float = direction.length()
-	if length < 0.4:
-		return
-	var normal := direction.orthogonal().normalized()
-	var colour := Palette.GATE_METAL
-
-	builder.add_wall(from, to, base_y, 0.28, 0.16, Palette.CONCRETE)
-	builder.add_wall(from, to, base_y + height - 0.14, 0.14, 0.18, colour)
-
-	# Vertikal pichqlar
-	var bars: int = maxi(4, int(length / 0.22))
-	for i in range(1, bars):
-		var t: float = float(i) / float(bars)
-		var p: Vector2 = from.lerp(to, t)
-		var a := Vector3(p.x, base_y + 0.22, p.y)
-		var b := Vector3(p.x, base_y + height - 0.14, p.y)
-		builder.add_box((a + b) * 0.5, Vector3(0.035, height - 0.36, 0.035),
-			colour.lightened(0.10), 0.0, false)
-
-	# Gorizontal chiziqlar
-	for level in 2:
-		var y: float = base_y + 0.35 + (height - 0.9) * float(level)
-		var a := Vector3(from.x, y, from.y)
-		var b := Vector3(to.x, y, to.y)
-		builder.add_box((a + b) * 0.5, Vector3((b - a).length(), 0.03, 0.03),
-			colour.lightened(0.10),
-			rad_to_deg(direction.angle()) * -1.0 + 90.0, false)
-
-
 # ================================================================== TAYAMAK
 
 ## Tarona — yog'och ustun. Xorazmda uy shifti va ayvonini ko'taradi.

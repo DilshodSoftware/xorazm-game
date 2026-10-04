@@ -31,6 +31,14 @@ extends RefCounted
 
 enum Style { MODERN, OLD_SAMAN, HALF }
 
+## Bitta uyning qurilish variantlari. `static var` o'rniga ishlatiladi:
+## statik holat butun sinflararo ulashiladi va ketma-ket chaqiruvlarda
+## ifloslanadi (birinchi uy `skip_roof` bilan qurilsa, keyingi ham
+## shiftini yo'qotardi).
+class Variant extends RefCounted:
+	var doors: bool = true
+	var roof: bool = true
+
 ## Eshiklarni chizish kerakmi? O'yinchi uyida haqiqiy, ochiladigan
 ## eshiklar qo'yiladi (`HouseDoor`) — ular ko'p geometriya talab qiladi,
 ## shuning uchun statik chizilgan eshik kerak emas.
@@ -62,10 +70,12 @@ static func build(builder: MeshBuilder, centre: Vector2, yaw: float,
 		front: float, depth: float, storeys: int,
 		rng: RandomNumberGenerator, style: int = Style.MODERN,
 		decorative_doors: bool = true, skip_roof: bool = false) -> Dictionary:
+	var variant := Variant.new()
+	variant.doors = decorative_doors
+	variant.roof = not skip_roof
 	var ground: float = TerrainGen.height_at(centre.x, centre.y)
 	var basis := Basis(Vector3.UP, yaw)
-	_doors = decorative_doors
-	_skip_roof = skip_roof
+	# Variant bir marta yaratildi — quyidagi yordamchilar undan o'qiadi
 	# DIQQAT: bu funksiya ichida `v = 0` — KO'CHA CHEGARASI (uyning
 	# old devori). `centre` esa — BIR MAYDONNING O'RTASI. Shu sababli
 	# boshlang'ich nuqtani yarim chuqurlikka orqaga suramiz. Aks holda
@@ -105,12 +115,13 @@ static func build(builder: MeshBuilder, centre: Vector2, yaw: float,
 			BuildingKit.WALL_THICKNESS, wall, coping)
 
 	# ================================================= 3. PESHTENTA (TABORXONA)
-	_porch(builder, origin, basis, gate_u, gate_w, ground, wall, coping)
+	_porch(builder, origin, basis, gate_u, gate_w, ground, wall, coping,
+		variant)
 
 	# ================================================= 4. XONALAR BLOKI
 	var room_v0: float = depth - ROOM_DEPTH
 	_rooms(builder, origin, basis, -half, half, room_v0, depth,
-		ground, top, storeys, rng)
+		ground, top, storeys, rng, variant)
 
 	# ================================================= 5. HOVLI
 	var courtyard_mid: float = (PORCH_DEPTH + room_v0) * 0.5
@@ -160,7 +171,7 @@ static func _street_wall(builder: MeshBuilder, origin: Vector3, basis: Basis,
 ## Peshenta: yon devorlar, yopiq shift va chuqurdagi og'ir eshik.
 static func _porch(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		gate_u: float, gate_w: float, ground: float, wall: Color,
-		coping: Color) -> void:
+		coping: Color, variant: Variant) -> void:
 	var height: float = BuildingKit.GATE_HEIGHT + 0.45
 	var half_gate: float = gate_w * 0.5
 
@@ -183,7 +194,7 @@ static func _porch(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		0.30, coping)
 
 	# Eshik — peshenta oxirida, hovliga qaragan
-	if _doors:
+	if variant.doors:
 		var door_at: Vector3 = _w(origin, basis, gate_u, PORCH_DEPTH - 0.14,
 			ground + BuildingKit.DOOR_HEIGHT * 0.5)
 		BuildingKit.plank_door(builder, door_at, gate_w * 0.86,
@@ -202,7 +213,8 @@ static func _porch(builder: MeshBuilder, origin: Vector3, basis: Basis,
 ## Xonalar bloki: hovliga qaragan devorda eshik + derazalar.
 static func _rooms(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		u0: float, u1: float, v0: float, v1: float, ground: float,
-		top: float, storeys: int, rng: RandomNumberGenerator) -> void:
+		top: float, storeys: int, rng: RandomNumberGenerator,
+		variant: Variant) -> void:
 	# DIQQAT: uslubni BIR marta aniqlaymiz. `_style_of` rng ni
 	# surishtiradi — ikki marta chaqirsak, devor va shift boshqa
 	# uslubni olib, uy chalkash ko'rinadi.
@@ -240,7 +252,7 @@ static func _rooms(builder: MeshBuilder, origin: Vector3, basis: Basis,
 		builder.add_wall(a, b, ground, top - ground, t, wall, false)
 
 	# Eshik
-	if _doors:
+	if variant.doors:
 		var door_at: Vector3 = _w(origin, basis, centre_u, v0 - t * 0.5,
 			ground + BuildingKit.DOOR_HEIGHT * 0.5)
 		BuildingKit.plank_door(builder, door_at, door_w * 0.95,
@@ -303,7 +315,7 @@ static func _rooms(builder: MeshBuilder, origin: Vector3, basis: Basis,
 	# Shift
 	var r0: Vector2 = _p(origin, basis, u0, v0)
 	var r1: Vector2 = _p(origin, basis, u1, v1)
-	if not _skip_roof:
+	if variant.roof:
 		BuildingKit.flat_roof(builder, r0, r1, top + 0.12, roof)
 	# Nopiya — shift PLITASINING ostida, 20 sm pastda. Ustida bo'lsa,
 	# taronalar shifit ustidan chiqib, uyga "qalin taxta halqa" beradi.

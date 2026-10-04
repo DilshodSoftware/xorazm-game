@@ -56,7 +56,7 @@ static func _anor(builder: MeshBuilder, at: Vector3,
 	# Keng, past va zich somon
 	var centre: Vector3 = at + Vector3(0, height * 0.82, 0)
 	_canopy(builder, centre, Vector3(spread, height * 0.42, spread),
-		rng, 52, scale, Palette.LEAF_DARK, Palette.LEAF_LIGHT)
+		rng, 78, scale, Palette.LEAF_DARK, Palette.LEAF_LIGHT)
 
 
 ## Nonak (o'rik) — keng, yassi va shoxli. 5–7 m.
@@ -82,7 +82,7 @@ static func _round_tree(builder: MeshBuilder, at: Vector3,
 
 	var tone: Color = Color("6f8a3c") if kind == Kind.SHARAK else Color("557a33")
 	_canopy(builder, crown + Vector3(0, height * 0.3, 0),
-		Vector3(radius, radius * 0.66, radius), rng, 62, scale,
+		Vector3(radius, radius * 0.66, radius), rng, 92, scale,
 		tone.darkened(0.22), tone.lightened(0.10))
 
 
@@ -97,7 +97,7 @@ static func _qaragay(builder: MeshBuilder, at: Vector3,
 		Color("6e5b46"), false)
 	# Tor, uchiqayroqchoq korona — tepada ingichka
 	_canopy_tapered(builder, at + Vector3(0, height * 0.18, 0),
-		height * 0.82, radius, radius * 0.28, rng, 58, scale,
+		height * 0.82, radius, radius * 0.28, rng, 86, scale,
 		Color("4a6a35"), Color("6d8c46"))
 
 
@@ -119,7 +119,7 @@ static func _terak(builder: MeshBuilder, at: Vector3,
 			sin(angle) * 0.7)
 		builder.add_cylinder(tip, droop, 0.05 * scale, 4, Color("7a6b52"), false)
 	_canopy(builder, crown + Vector3(0, height * 0.26, 0),
-		Vector3(2.7 * scale, height * 0.3, 2.7 * scale), rng, 58, scale,
+		Vector3(2.7 * scale, height * 0.3, 2.7 * scale), rng, 86, scale,
 		Color("6f8455"), Color("93a26c"))
 
 
@@ -131,20 +131,27 @@ static func _canopy(builder: MeshBuilder, centre: Vector3,
 		scale: float, dark: Color, light: Color) -> void:
 	for i in count:
 		# Kub ichida bir tekis nuqta — yaxshiroq taqsimot uchun
+		# HAJM BO'YABAR tekis taqsimot (sfera ichida). Qobiqaga
+		# yaqinlashtirsak, barcha barg tashqarida teriladi va
+		# somon bo'sh ko'rinadi.
 		var p := Vector3(
 			rng.randf_range(-1.0, 1.0),
 			rng.randf_range(-1.0, 1.0),
 			rng.randf_range(-1.0, 1.0))
-		if p.length_squared() > 1.0:
-			p = p.normalized()
+		if p.length_squared() < 0.0001:
+			continue
+		p = p.normalized() * pow(rng.randf(), 0.34)
 		var at: Vector3 = centre + Vector3(p.x * radii.x, p.y * radii.y, p.z * radii.z)
 
 		# Barg kvadratchasi — har safar boshqa yo'nalishda
 		var yaw: float = rng.randf() * TAU
 		var tilt: float = rng.randf_range(-0.9, 0.9)
-		# Barg 30–45 sm. Katta qilsak, daraxt "keng varakli kalitak"
-		# bo'lib ko'rinadi va 2 m gacha siluet chiqadi.
-		var size: float = rng.randf_range(0.30, 0.48) * scale
+		# Barg 42–68 sm. Nima uchun kichik emas: juda kichik barglar
+		# (20 sm) sonini ko'paysa, somon "konfetti" bo'lib ko'rinadi —
+		# har bir barg alohida ajralib turadi. Katta va ustma-ust
+		# tushadigan barglar esa yaxshi to'ldirilgan yashil massa
+		# hosil qiladi. 3-bosqichdagi kichik-barg xatosi shu edi.
+		var size: float = rng.randf_range(0.42, 0.68) * scale
 		_leaf(builder, at, yaw, tilt, size, dark, light, rng)
 
 
@@ -192,5 +199,5 @@ static func autumn_canopy(builder: MeshBuilder, at: Vector3, kind: int,
 	builder.add_cylinder(at, at + Vector3(0, height * 0.45, 0), 0.2 * scale, 6,
 		Color("6b5340"), false)
 	_canopy(builder, at + Vector3(0, height * 0.72, 0),
-		Vector3(2.6 * scale, 1.9 * scale, 2.6 * scale), rng, 56, scale,
+		Vector3(2.6 * scale, 1.9 * scale, 2.6 * scale), rng, 82, scale,
 		Color("8a6a24"), Color("c39a3a"))

@@ -271,6 +271,9 @@ func _parse_cli() -> void:
 			TerrainMap.render(args[i + 1])
 			get_tree().quit(0)
 			return
+		if args[i] == "--door" and i + 1 < args.size():
+			_capture_door(args[i + 1], args[i + 2] if i + 2 < args.size() else "open")
+			return
 		if args[i] == "--inspect" and i + 1 < args.size():
 			_inspect(args[i + 1])
 			return
@@ -298,6 +301,36 @@ func _parse_cli() -> void:
 			terrain_test.host = self
 			add_child(terrain_test)
 			return
+
+
+## Eshikning oldidan surat — "open" yoki "yopiq".
+##     godot --path . -- --door /tmp/eshik.png open
+## DIQQAT: eshikni OCHIB, bir necha kadr kutamiz — shunda rasmda
+## burilgan holati ko'rinadi (avvalgi xatoda `is_open()` true bo'lib,
+## eshik 0° da turgandi).
+func _capture_door(path: String, state: String) -> void:
+	var doors: Array = player_house.get("eshiklar", [])
+	if doors.is_empty():
+		_save_shot(path)
+		return
+	var door := doors[0] as HouseDoor
+	if state == "open":
+		door.set_open(true)
+
+	# Eshikning oldida, ichkariga qaragan tomonda
+	var into: Vector3 = Vector3(sin(door.rotation.y), 0, cos(door.rotation.y))
+	var eye: Vector3 = door.global_position - into * 2.4 + into * 0.6 \
+		+ Vector3(0, 1.7, 0)
+	var ground: float = TerrainGen.height_at(eye.x, eye.z)
+	var look: Vector2 = Vector2(door.global_position.x - eye.x,
+		door.global_position.z - eye.z).normalized()
+	var spot := Vector3(eye.x, ground + 1.7, eye.z)
+	var yaw := rad_to_deg(atan2(-look.x, -look.y))
+	player.teleport(spot, yaw, -8.0)
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(spot, yaw, -8.0)
+	await _settle(3)
+	_save_shot(path)
 
 
 ## Uyni shimolasiz qurib, ichini yuqoridan ko'rsatadi — mebel

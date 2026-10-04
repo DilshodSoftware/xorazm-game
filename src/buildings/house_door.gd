@@ -15,7 +15,10 @@ signal opened
 signal closed
 
 const OPEN_ANGLE := 78.0
-const SPEED := 3.4
+## Burchak/soniya. 78° eshik yarim soniyada ochilishi kerak — o'yinchi
+## E bosdi va darhol kirishi lozim. 3,4°/soniyada eshik ochilishi
+## 23 soniya tushar edi.
+const SPEED := 170.0
 
 var _target: float = 0.0
 var _interactable: Interactable
@@ -94,10 +97,16 @@ func is_open() -> bool:
 
 
 ## Eshik tebranishi — sekin, og'ir yog'och kabi.
+##
+## DIQQAT: burchak `delta` BO'YICHA har kadrda qo'shiladi. Avval
+## `delta * 60.0 * delta` yozilgan edi (ya'ni delta² × 60) — bu
+## 1/60 kadrda ~0,0003 rad/s beradi, ya'ni eshik deyarli
+## HARAKATSIZ qoladi. `is_open()` esa `true` qaytarib, o'yinchi
+## "eshik ochildi" deb o'ylaydi, lekin eshik o'rnida turib qoladi.
 func _process(delta: float) -> void:
-	if absf(rotation.y - _target) < 0.001:
+	if absf(rotation.y - _target) < 0.0005:
 		return
-	rotation.y = move_toward(rotation.y, _target, deg_to_rad(SPEED) * delta * 60.0 * delta)
+	rotation.y = move_toward(rotation.y, _target, deg_to_rad(SPEED) * delta)
 
 
 ## Eshikning ochiq turgan nuqtasi (o'tish uchun).

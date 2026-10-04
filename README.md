@@ -58,6 +58,9 @@ loyiha bitta fayl bilan ishga tushadi.
 
 # Uy ichini shimola ko'rib tekshirish (mebbel joylashuvi)
 ~/Applications/godot --path . -- --inspect /tmp/ichi.png
+
+# Eshikning oldidan surat (ochiq yoki yopiq)
+~/Applications/godot --path . -- --door /tmp/eshik.png open
 ```
 
 Godot muharririda: **Import** → loyihani tanlang → **Play (F5)**.
@@ -257,7 +260,7 @@ scenes/            # main.tscn, player/player.tscn
 tools/             # player_selftest.gd — 27 ta test
                    # terrain_selftest.gd — 45 ta test
                    # road_selftest.gd   — 15 ta test
-                   # building_selftest.gd — 17 ta test
+                   # building_selftest.gd — 24 ta test
                    # terrain_map.gd     — rasm xaritasi chizuvchisi
 ```
 
@@ -269,13 +272,25 @@ Har bir bosqichda avtomatik tekshiruv ishlaydi:
 ~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
 ~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
 ~/Applications/godot --headless --path . -- --test-roads     # yo'llar (15)
-~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (17)
+~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (24)
 ~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
 ```
 
 Har uchasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
 
-**Bu nima uchun muhim.** 4-bosqichda tekshiruv ikki jiddiy xatoni
+**Bu nima uchun muhim.** GDScript'da `await` ichidagi runtime xatosi
+**yutilib ketadi**: funksiya o'sha joyda to'xtaydi, lekin uni chaqirgan
+funksiya davom etib yakuniy "0 xato" hisobotini chiqaradi. 4-bosqichda
+shuning tufayli uchta eshik tekshiruvi butunlay bajarilmay qoldi va
+hech kim bilmadi. Endi `EXPECTED_CHECKS` — bajarilgan tekshiruvlar
+soni shartli tekshiriladi: kam bo'lsa, test o'zi "bajarilmagan
+tekshiruv bor" deb xato beradi.
+
+**Va bu darhol o'z natijasini berdi** — eshik "ochiq" deb hisoblanardi,
+lekin hech qachon burilmagan edi: burchak har kadrda `delta² × 60`
+bo'yicha qo'shilardi. Tezlik 3,4°/soniya edi (78° uchun 23 soniya).
+
+**Yana bir bor o'lcham** 4-bosqichda tekshiruv ikki jiddiy xatoni
 topdi: (1) joylashuv tekshiruvi sikl ichida `return` qilgani uchun
 faqat birinchi o'q tekshirilardi — 111 uydan 275 juftlik ustma-ust
 tushgan edi; (2) bino yordamchilarida `origin.y` ga yana `ground`

@@ -15,6 +15,10 @@ var host: Node
 var _passed := 0
 var _failed := 0
 
+## Barcha tekshiruvlar bajarilganini tasdiqlash uchun. Qo'shgan
+## tekshiruvda bu sonni ham oshirish SHART.
+const EXPECTED_CHECKS := 24
+
 
 func _ready() -> void:
 	_run()
@@ -30,6 +34,19 @@ func _run() -> void:
 	await _test_houses_stand_on_ground()
 	_test_geometry_bounds()
 	await _test_player_house_interior()
+	await _test_doors_open()
+
+	# DIQQAT: GDScript'da `await` ichidagi runtime xatosi YUTILADI —
+	# funksiya o'sha joyda to'xtaydi, lekin uni chaqirgan funksiya
+	# davom etadi va yakuniy hisobot "0 xato" deb chiqadi. 4-bosqichda
+	# shuning tufayli uchta eshik tekshiruvi butunlay bajarilmay qoldi
+	# va hech kim bilmadi. Shuning uchun tekshiruvlar sonini
+	# QAT'IY tekshiramiz.
+	var total: int = _passed + _failed
+	if total != EXPECTED_CHECKS:
+		print_rich("  [color=#c8452f]FAIL[/color] Bajarilmagan tekshiruv bor: "
+			% ("kutilgan %d, bajarilgan %d" % [EXPECTED_CHECKS, total]))
+		_failed += 1
 
 	print("----------------------------------------")
 	print_rich("O'tdi: [color=#7fbf6a]%d[/color]   Xato: [color=#%s]%d[/color]" % [
@@ -257,6 +274,97 @@ func _test_player_house_interior() -> void:
 		"(eng baland: yerdan %.2f m)" % high)
 	_check("Hech narsa yer ostida emas", low > -0.6,
 		"(eng past: yerdan %.2f m)" % low)
+
+
+## Eshiklar haqiqatan ochilishi kerak — E tugmasi ishlashi.
+##
+## DIQQAT: bu tizim qo'lda qurilgan, lekin oxirigacha SINAB
+## KO'RILMAGAN edi. Shuning uchun bu yerda haqiqiy o'yinchi
+## turgun qo'yiladi, fizika kadrlari kutib o'tiladi va `try_use`
+## chaqiriladi. So'ng eshik burilganini tekshiramiz.
+func _test_doors_open() -> void:
+	var plot := Tandirchi.player_plot()
+	if plot.is_empty():
+		_check("Eshiklar uchun uy bor", false)
+		return
+
+	var root := Node3D.new()
+	root.name = "Sinov"
+	add_child(root)
+	var info := PlayerHouse.build(root)
+	var doors: Array = info.get("eshiklar", [])
+
+	_check("Ikkita eshik qurildi", doors.size() == 2,
+		"(%d ta)" % doors.size())
+	if doors.size() != 2:
+		root.queue_free()
+		return
+
+	# Har bir eshikda muloqot zonasi bormi
+	var with_zone := 0
+	for d in doors:
+		var zone := d.get_node_or_null("Muloqot") as Interactable
+		if zone != null:
+			with_zone += 1
+	_check("Har bir eshikda muloqot zonasi bor", with_zone == doors.size(),
+		"(%d/%d)" % [with_zone, doors.size()])
+
+	# Haqiqiy o'yinchi — zona ishlashi uchun sahnada bo'lishi shart
+	var probe := CharacterBody3D.new()
+	probe.add_to_group("player")
+	probe.collision_layer = PhysicsLayers.PLAYER
+	probe.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.35
+	capsule.height = 1.8
+	shape.shape = capsule
+	probe.add_child(shape)
+	root.add_child(probe)
+
+	var door := doors[0] as HouseDoor
+	# Eshikning o'zidan emas, uning MULAQOT ZONASIDAN foydalanamiz —
+	# `is_offered()` shu obyektda, eshik tugunida emas.
+	var zone: Interactable = door.get_node_or_null("Muloqot")
+	# Eshikning ochiq turgan nuqtasi — o'yinchi shu yerda turadi
+	var spot := door.global_position + Vector3(0, 0, 0) \
+		+ Vector3(sin(door.rotation.y), 0, cos(door.rotation.y)) * 0.9
+	probe.global_position = spot
+
+	# 5 kadr — Area3D `body_entered` ishga tushishi uchun
+	for _i in 6:
+		await get_tree().physics_frame
+
+	_check("O'yinchi eshik oldida muloqotni ko'radi",
+		zone != null and zone.is_offered(),
+		"(%.1f m masofada)" % probe.global_position.distance_to(door.global_position))
+
+	var was_open: bool = door.is_open()
+	zone.try_use(probe)
+	# Eshik sekin buriladi — bir necha kadr kutamiz
+	for _i in 40:
+		await get_tree().process_frame
+
+	_check("E bosilganda eshik ochildi", door.is_open() != was_open,
+		"(holat: %s)" % ("ochiq" if door.is_open() else "yopiq"))
+	_check("Eshik burildi", absf(door.rotation.y) > 0.2,
+		"(%.0f°)" % rad_to_deg(absf(door.rotation.y)))
+	# Muhim: holat va KO'RINISH bir-biriga mos bo'lishi shart.
+	# `is_open()` — bayroq, `rotation.y` — haqiqiy burchak. Ular
+	# mos kelmasa, o'yinchi ochiq deb o'ylab yopiq eshikka urilib
+	# qoladi.
+	_check("Eshik holati va burilishi mos", (door.is_open() and absf(door.rotation.y) > 0.2)
+		or (not door.is_open() and absf(door.rotation.y) < 0.02),
+		"(ochiq=%s, %.0f°)" % [str(door.is_open()), rad_to_deg(door.rotation.y)])
+
+	# Yopilishi ham kerak
+	zone.try_use(probe)
+	for _i in 40:
+		await get_tree().process_frame
+	_check("Eshik yopildi", not door.is_open(),
+		"(%.0f°)" % rad_to_deg(absf(door.rotation.y)))
+
+	root.queue_free()
 
 
 # ------------------------------------------------------------------- Yordam

@@ -732,10 +732,15 @@ static func _qator(nomi: String, c: Vector2, chiziq: Array, yon: float,
 
 ## Qator uyining qatori (2–3). Qat'iy "tasodifiy" — bir xil raqam
 ## har doim bir xil natija beradi.
+##
+## NIMA UCHUN 0,38 (55% emas): uchinchi qavat har bir uyga ~1000
+## uchburchak qo'shayotgan (ikkita qavat + to'sh + gumbaz). Agar
+## ko'p qatlarga chiqsa, shahar geometriyasi ikki barobar oshadi
+## va 3-qavatli uylar Xorazmning tipik tikligini yo'qotadi.
 static func _qavat(urish: int, minimal: int, maksimal: int) -> int:
 	if maksimal <= minimal:
 		return minimal
-	return maksimal if _nozik(urish * 3) < 0.55 else minimal
+	return maksimal if _nozik(urish * 3) < 0.38 else minimal
 
 
 ## Barqaror 0..1 "tasodifiy" son (statik holatga tegmaydi).
@@ -749,12 +754,15 @@ static func _nozik(index: int) -> float:
 ##
 ## DIQQAT: Tandirchidan ko'ra to'rtta qo'shimcha shart bor, chunki
 ## Xivaning ko'chalari qatorlab qo'yiladi va tepalik ham bor:
-##   1. boshqa binodan `TESHIK` (4 m) masofada
-##   2. tepalik chegarasidan 3,5 m masofada (ichida bo'lsa — qat'iy)
-##   3. har bir ko'cha o'qidan `KOCHA_TIZZALIK` (5 m) masofada
-##   4. devor ichida va darvozalardan uzoqda
+##   1. boshqa binodan `TESHIK` (3,2 m) masofada
+##   2. tepalik chegarasidan `TESHIK` masofada (ichida bo'lsa — qat'iy)
+##   3. har bir ko'cha o'qidan `KOCHA_TIZZALIK` (4 m) masofada
+##   4. devor ichida va darvozalardan 12 m uzoqda
 ## Bularning BARCHASI kerak: aks holda uy devor ustiga chiqib
 ## turadi yoki ko'chaning o'rtasida qoladi.
+## Rad etilgan joyning SABABI `_oxirgi_sabab` da saqlanadi va
+## `rejected()` orqali ko'riladi — kodni o'zgartirganda qator
+## sekinlashini ko'rish uchun.
 static func _joy_bosh(markaz: Vector2, yaw: float, en: float, chuqur: float,
 		tepalikda: bool) -> bool:
 	var burchak := _burchaklar(markaz, yaw, en, chuqur)

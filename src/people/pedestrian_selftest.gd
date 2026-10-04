@@ -114,11 +114,6 @@ func _piyoda(variant: int = 0, seed_kalit: int = 12345) -> Pedestrian:
 const KOCHA := 0
 
 
-func _kocha_uzunligi() -> float:
-	var tayyor := Pedestrian.chiziq_tayyorla(Tandirchi.streets()[KOCHA]["nuqta"])
-	return float(tayyor["uzunlik"])
-
-
 ## Yer balandligi — nishat orqali (haqiqiy chunk mesh'i).
 ##
 ## DIQQAT: sinov sinfi `Node` dan merosxo'r bo'lgani uchun
@@ -267,14 +262,18 @@ func _test_model() -> void:
 		eng_kam = mini(eng_kam, uchburchak)
 		if uchburchak <= 0:
 			bosh_joy.append(String(Pedestrian.VARIANTS[i]["nom"]))
-		# Model balandligi
+		# Model balandligi.
+		# DIQQAT: chegaraga SOLISHTIRILADIGANI o'lchangan balandlik
+		# emas, VARIANTDAGI qiymat. Aks holda 1,85 m li variant
+		# (chegaraning aynan chekkasi) 0,0000002 m oshib ketgani
+		# uchun "chegara dan tashqarida" deb rad etiladi.
 		var balandlik := model_balangi(piyoda)
-		if absf(balandlik - piyoda.boy) > 0.01:
+		if piyoda.boy < Pedestrian.BOY_MIN or piyoda.boy > Pedestrian.BOY_MAX:
+			notogri.append("%s: variant %.2f m chegaradan tashqarida" % [
+				Pedestrian.VARIANTS[i]["nom"], piyoda.boy])
+		elif absf(balandlik - piyoda.boy) > 0.005:
 			notogri.append("%s: model %.3f m, variant %.3f m" % [
 				Pedestrian.VARIANTS[i]["nom"], balandlik, piyoda.boy])
-		elif balandlik < Pedestrian.BOY_MIN or balandlik > Pedestrian.BOY_MAX:
-			notogri.append("%s: %.2f m chegaradan tashqarida" % [
-				Pedestrian.VARIANTS[i]["nom"], balandlik])
 		# Oyoq yerga tegishi kerak: modelning eng past nuqtasi
 		# piyoda tugunining Y=0 darajasida bo'lishi SHART (tugun
 		# o'zi yerga qo'yiladi). Aks holda piyoda yer ostida yoki
@@ -667,18 +666,31 @@ func _test_chetlashish() -> void:
 func _test_jamoa() -> void:
 	var jamoa := Crowd.new()
 	_dunyo.add_child(jamoa)
+	# DIQQAT: `host` (ya'ni o'yin) mavjud bo'lsa, undagi haqiqiy
+	# trafikni ulaymiz — shunda piyodalar haqiqiy mashinalardan
+	# chetlashadi va bu ham sinovda tekshiriladi. `host` yo'q bo'lsa
+	# (sinovni mustaqil ishga tushirganda) trafik ulanmaydi va
+	# chetlashish alohida tekshiriluvchi qism orqali sinovlanadi.
+	if host != null and host.get("traffic") != null:
+		jamoa.use_traffic(host.get("traffic") as Traffic)
 	var manzil := _manzil_nodasi()
 	jamoa.follow(manzil)
 	jamoa.force_refresh()
 	for _i in 30:
 		await get_tree().physics_frame
 	var soni := jamoa.piyoda_soni()
-	# NIMA UCHUN 30 va 40 emas: 40 — chegara (KOP_CHEGARASI), lekin
-	# aniq son ko'chalar uzunligiga bog'liq. Sinov shuni tekshiradi
-	# ki jamoa chegarani to'ldiradi: 30 ta odam o'yinchi atrofida
-	# "jonli ko'cha" beradi, 40 ta esa chegaraning o'zi.
-	_check("O'yinchi atrofida piyodalar yaratiladi", soni >= 30,
-		"(%d ta, 1 kadrda)" % soni)
+	# DIQQAT: bu yerda avval `soni >= 30` deb DOIMIY son yozilgan
+	# edi. U `KOP_CHEGARASI` = 40 ga mos kelar edi, lekin chegara
+	# ishlash tezligi uchun 16 ga tushirilganda test buzildi —
+	# ya'ni test o'zgaruvchiga emas, o'z o'rniga bog'langan edi.
+	#
+	# Endi chegara `Crowd.KOP_CHEGARASI` dan olinadi va 6 ta zaxira
+	# qoldiriladi: aniq son ko'chalar uzunligiga bog'liq, qisqa
+	# ko'chada chegaraga yetmasligi mumkin. 6 ta zaxira yetarli —
+	# chegaraga yaqin bo'lsa jamoa "to'ldirilgan" hisoblanadi.
+	var kutilgan: int = maxi(6, Crowd.KOP_CHEGARASI - 6)
+	_check("O'yinchi atrofida piyodalar yaratiladi", soni >= kutilgan,
+		"(%d ta, kutilgan ≥ %d)" % [soni, kutilgan])
 	_check("Piyoda soni chegaradan oshmaydi", soni <= Crowd.KOP_CHEGARASI,
 		"(%d / %d)" % [soni, Crowd.KOP_CHEGARASI])
 

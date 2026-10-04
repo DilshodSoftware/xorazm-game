@@ -320,6 +320,15 @@ static func anatomia(boy: float, ayol: bool) -> Dictionary:
 	# (o'zgaruvchan "chiroyli" bosh balandligi umumiy balandlikni
 	# buzadi va piyoda yerga botib qoladi).
 	var bosh_boyi: float = boy - bel - tana_uzunligi - boyin
+	# Oyoq bo'laklari BEL ga bo'linadi: erkakda 0,462 + 0,462 + 0,076 =
+	# 1,000 bel (0,530 H) — Drillis qiymatiga to'g'ri keladi. Ayolda
+	# bel 0,515 H, shuning uchun bo'laklar ham moslashadi.
+	# NIMA UCHUN shu tarzda: agar bo'laklar 0,245 H + 0,245 H + 0,040 H
+	# qilib yozilsa, ayolning oyoqlari 0,015 H (2,5 sm) yerga botib
+	# qoladi va model balandligi variantdan oshib ketadi (sinovda
+	# shunday chiqdi).
+	var qarsak_ulushi: float = bel * 0.462
+	var boldur_ulushi: float = bel * 0.462
 	return {
 		"bel": bel,
 		"tana": tana_uzunligi,
@@ -331,9 +340,9 @@ static func anatomia(boy: float, ayol: bool) -> Dictionary:
 		"qorin_yalinligi": (0.100 if ayol else 0.108) * boy,
 		"ko_krak": (0.108 if ayol else 0.115) * boy,
 		"bel_yarim": 0.050 * boy,
-		"qarsak": 0.245 * boy,
-		"boldur": 0.245 * boy,
-		"kaft_b": 0.040 * boy,
+		"qarsak": qarsak_ulushi,
+		"boldur": boldur_ulushi,
+		"kaft_b": bel - qarsak_ulushi - boldur_ulushi,
 		"yelka_qol": 0.186 * boy,
 		"bilak": 0.146 * boy,
 		"qo_l": 0.108 * boy,
@@ -521,12 +530,23 @@ func _variantni_qollash() -> void:
 
 ## Tugunlarni va modelni quradi.
 func _tuzishni_qurish() -> void:
+	# DIQQAT: soya — `XORAZM_SOYASIZ=1` bilan o'chiriladi (trafik
+	# moduli `XORAZM_TRAFIX=0` shunday qilingan). O'chish kerak
+	# bo'lsa, sabab chizish soni: 1 ta piyoda = 6 ta mesh + 6 ta soya.
+	# Ko'rinadigan piyoda odatda 10–15 ta bo'ladi, ya'ni ~180 chizish.
+	if OS.get_environment("XORAZM_SOYASIZ") == "1":
+		soya = false
 	# DIQQAT: `top_level = true` — bu piyoda uchun MAJBURIY.
 	# Piyoda o'zining ko'cha nuqtasini DUNYO koordinatida biladi
 	# (`RoadNetwork`, `Tandirchi` — hammasi global), shuning uchun
 	# ota tugunning o'zgarishiga bog'liq bo'lmasligi kerak.
-	# Yana bir sabab: `global_position` ga qiymat berish Godot 4.7 da
-	# burilishni qayta hisoblaydi (yuqoridagi izoh).
+	# Bu bilan quyidagilar ham hal bo'ladi:
+	#   * `position` aynan dunyo koordinati bo'ladi (qulay va arzon);
+	#   * `global_position` ga qiymat berish kerak bo'lmaydi — u
+	#     `set_global_transform` orqali o'tadi, ya'ni ota o'zgarishini
+	#     qayta hisoblaydi. Sinov muhitida (`--script`) shu yo'l
+	#     burilishni buzdi: yaw −94,7° bo'lgan piyoda birinchi yerga
+	#     tekish navbatida −0,4° ga tushib ketgan edi.
 	top_level = true
 	var a := olchov
 	var qismlar := build_parts(xususiyat)
@@ -1018,7 +1038,22 @@ func _mashina_tekib_ketayotganmi() -> bool:
 	if mashinalar.is_empty() and traffic == null:
 		return false
 	for i in range(_mashinalarni_soni()):
-		if _mashina_telayotganmi(_mashina(i)):
+		var mashina := _mashina(i)
+		# DIQQAT: TEKSHIRUV QAERGA QO'YILISHI MUHIM.
+		# `_mashina_telayotganmi(mashina: Vehicle)` parametri
+		# TURLANGAN, shuning uchun GDScript tur tekshiruvini
+		# chaqiruv chegarasida bajaradi — funksiya tanasiga
+		# KIRMASDAN xato beradi. O'sha xatoni funksiya ICHI da
+		# ushlab bo'lmaydi.
+		#
+		# Qachon bo'ladi: o'yinchi 4 km nariga ko'chilganda
+		# `Traffic` uzoqdagi mashinalarni `queue_free()` qiladi,
+		# lekin piyoda ularga havolani saqlab qoladi va keyingi
+		# fizika kadrida "Invalid type ... previously freed" xatosini
+		# beradi (o'lchovda shunday ko'rildi).
+		if mashina == null or not is_instance_valid(mashina):
+			continue
+		if _mashina_telayotganmi(mashina):
 			return true
 	return false
 
@@ -1033,6 +1068,11 @@ func _mashinalarni_soni() -> int:
 func _mashina(index: int) -> Vehicle:
 	if index < mashinalar.size():
 		return mashinalar[index]
+	# DIQQAT: `traffic` ham ozod qilingan bo'lishi mumkin (jamoa
+	# o'yinidan oldin to'xtatilganda). `null` tekshiruvi yetarli
+	# emas — ozod qilingan obyekt ham `null` EMAS.
+	if traffic != null and not is_instance_valid(traffic):
+		return null
 	if traffic != null:
 		var i: int = index - mashinalar.size()
 		if i < traffic.cars.size():
@@ -1050,14 +1090,22 @@ func _mashina_telayotganmi(mashina: Vehicle) -> bool:
 		mashina.global_position.z - _pos.z)
 	if farq.length() > TIRALIQ:
 		return false
-	# Mashining oldinga yo'nalishi (global, −Z qoidasi bo'yicha).
+	# Mashining oldinga yo'nalishi.
 	#
-	# DIQQAT: belgi o'zgarishi kerak. `farq` = mashina − piyoda.
-	# Piyoda mashinaning OLDIDAN bo'lsa, piyoda→mashina vektori
-	# mashina yo'nalishiga QARAMA-QARSHI bo'ladi, ya'ni
-	# `farq · yonalish < 0`. (Dastlabki yozimda `<= 0.0` edi —
-	# natijada hech qanday mashina sezilmadi va sinov FAIL bo'ldi.)
-	var burchak: float = mashina.global_rotation.y
+	# DIQQAT: `rotation.y` GRADUSda — `deg_to_rad` shart. Bu xato avval
+	# chiqib, piyoda hech qachon mashinadan chetlashmagan edi
+	# ("−128°" ni radian deb hisoblaganda yo'nalish boshqa tomonga
+	# buriladi).
+	# DIQQAT: `global_rotation.y` emas, `rotation.y` (mahalliy) —
+	# global o'zgarish qiymati kechiktirilgan hisoblanadi, ya'ni
+	# mashina hozir aylangan bo'lsa ham piyoda eskisini ko'radi.
+	# Mashinalar `Traffic`/`main` da o'z o'rnida turadi (ular
+	# o'zgarishsiz), shuning uchun mahalliy yaw global bilan bir xil.
+	#
+	# DIQQAT: belgi ham muhim. `farq` = mashina − piyoda. Piyoda
+	# mashinaning OLDIDAN bo'lsa, piyoda→mashina vektori mashina
+	# yo'nalishiga QARAMA-QARSHI bo'ladi: `farq · yonalish < 0`.
+	var burchak := deg_to_rad(mashina.rotation.y)
 	var yonalish := Vector2(-sin(burchak), -cos(burchak))
 	if farq.dot(yonalish) >= 0.0:
 		return false   # mashina bizdan keyin (biz uning orqasiz)

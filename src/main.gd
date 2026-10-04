@@ -20,6 +20,8 @@ var player_house: Dictionary = {}
 var traffic: Traffic
 var driver: PlayerCar
 var player_vehicle: Vehicle = null
+## Ko'chadagi piyodalar (jamoa).
+var crowd: Crowd = null
 var _hud: Label
 var _prompt: Label
 var _speedo: Label
@@ -114,8 +116,31 @@ func _spawnplayer() -> void:
 	# va arzon mashina.
 	player_vehicle = _spawn_player_vehicle()
 	traffic.follow(player)
-	# Boshida mashinalar darhol ko'rinsin (bir kadr kutmasdan)
+	# Boshida mashinalar darhol ko'rinsin (bir kadr kutmasidan)
 	traffic.force_refresh()
+
+	# --- Piyodalar ---
+	# Ko'chada odamlar. Jamoa o'yinchi atrofida 90 m radiusda
+	# quriladi va 125 m dan uzoqda olib tashlanadi.
+	#
+	# DIQQAT: jamoa `traffic` dan keyin yaratiladi va undan
+	# `use_traffic` oladi — piyodalar mashinalardan chetlashadi.
+	# `XORAZM_PIYODALAR=0` bilan piyodalarni o'chirish mumkin —
+	# zaxira chorasi (Intel UHD ICL GT1 sekin, ko'rish uchun).
+	if OS.get_environment("XORAZM_PIYODALAR") != "0":
+		_crowd_qurish()
+	else:
+		print_rich("  [color=#a89d8a]Piyodalar o'chirilgan "
+			+ "(XORAZM_PIYODALAR=0)[/color]")
+
+
+## Ko'chadagi piyodalarni quradi.
+func _crowd_qurish() -> void:
+	crowd = Crowd.new()
+	add_child(crowd)
+	crowd.use_traffic(traffic)
+	crowd.follow(player)
+	crowd.force_refresh()
 
 
 ## Ko'cha chetida, o'yinchi uyiga yaqin joyda haydana oladigan
@@ -422,8 +447,22 @@ func _parse_cli() -> void:
 			vehicle_test.host = self
 			add_child(vehicle_test)
 			return
+		if args[i] == "--people" and i + 1 < args.size():
+			_preview_people(args[i + 1],
+				float(args[i + 2]) if i + 2 < args.size() else 0.0)
+			return
 		if args[i] == "--seat" and i + 1 < args.size():
 			_capture_seat(args[i + 1])
+			return
+		if args[i] == "--test-khiva":
+			var khiva_test := KhivaSelfTest.new()
+			khiva_test.host = self
+			add_child(khiva_test)
+			return
+		if args[i] == "--test-people":
+			var people_test := PedestrianSelfTest.new()
+			people_test.host = self
+			add_child(people_test)
 			return
 		if args[i] == "--test-audio":
 			var audio_test := AudioSelfTest.new()
@@ -472,6 +511,47 @@ func _parse_cli() -> void:
 ##
 ## Ikkinchi argument — qaysi tomondan: "yoni" (sukut bo'lgani) yoki
 ## "oldi".
+## Piyodalarni bir qatorga qo'yib suratga oladi — dizayn ko'rigi.
+##
+##     godot --path . -- --people /tmp/odamlar.png
+##
+## Nima uchun kerak: piyoda modeli 6 ta qismdan iborat va ular
+## alohida tugunlar. Noto'g'ri joylashtirilsa model yerga botadi
+## yoki cho'zilib ketadi. O'lchash son bilan ushlaydi, lekin
+## siluetni ko'z bilan tezroq tekshiradi.
+## [param distance] — kameraning qatordan masofasi, m. 0 bo'lsa
+## avtomatik (qator uzunligiga qarab).
+func _preview_people(path: String, distance: float) -> void:
+	var pad := PeoplePreview.find_pad()
+	var row := PeoplePreview.build_row(self, pad, true)
+	if row.is_empty():
+		print_rich("[color=#c8452f]Piyodalar qurilmadi[/color]")
+		get_tree().quit(2)
+		return
+	var cam: Camera3D = player.rig.camera
+	if cam:
+		cam.far = 300.0
+		cam.fov = 60.0
+	var setup: Dictionary = PeoplePreview.camera_setup(row, pad, distance)
+	# Piyodalar real ko'chada yuradi — shu bois ularni qo'llab
+	# turish uchun qatorni "muhitga" ulash kerak. Shuning uchun
+	# quyidagicha o'qi qo'yamiz.
+	var target: Vector3 = Vector3(setup["nuqta"].x, pad.y + 0.9, pad.z)
+	var eye: Vector3 = setup["nuqta"]
+	var look: Vector3 = target - eye
+	print_rich("[color=#7fd4a0]Piyodalar: %d ta, ko'rik %.1f, %.1f, %.1f, yaw %.0f[/color]"
+		% [row.size(), eye.x, eye.y, eye.z, float(setup["yaw"])])
+	print_rich("  qator uzunligi: %.1f m (birinchi %.1f, oxirgi %.1f)"
+		% [(row[row.size() - 1].global_position
+			- row[0].global_position).length(),
+			row[0].global_position.x, row[row.size() - 1].global_position.x])
+	player.teleport(eye, float(setup["yaw"]), float(setup["pitch"]))
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(eye, float(setup["yaw"]), float(setup["pitch"]))
+	await _settle(3)
+	_save_shot(path)
+
+
 func _preview_cars(path: String, view: String) -> void:
 	var pad := CarPreview.find_pad()
 	var row := CarPreview.build_row(self, pad)
@@ -758,8 +838,32 @@ func _capture_at(path: String, where: String, height_arg: String,
 	# turamiz — chunklar yuklangan, kamera esa aniq kerakli nuqtada.
 	await _settle(CAPTURE_FRAMES)
 	player.teleport(spot, yaw, pitch)
+	await _wait_chunks()
 	await _settle(3)
 	_save_shot(path)
+
+
+## CHUNK'LAR TAYYOR BO'LGUNCHA KUTADI (chegara bilan).
+##
+## NIMA UCHUN: `--at` bir marta 4 km nariga sakrab o'tadi (masalan
+## Xivaga). Chunk'lar har karda bittadan quriladi, 40 kadr esa
+## yetarli emas — suratda shaharning binolari bor, lekin OSTIDAGI
+## YER hali qurilmagan, va natijada binolar havoda suzib
+## ko'rinyapti (o'lchovda shunday bo'ldi: Xiva "suzib yurgan"
+## deb ko'rindi, lekin aslida yer chunk'i yuklanmagan edi).
+##
+## [param limit] — maksimal kadr soni. Chegara SHART: agar bitta
+## chunk'da xato bo'lsa, chekarsiz kutib qolmaslik kerak.
+func _wait_chunks(limit: int = 240) -> void:
+	for i in limit:
+		var yer: int = chunks.pending_count()
+		var bino: int = buildings.pending_count()
+		if yer == 0 and bino == 0:
+			return
+		await _settle(1)
+	print_rich("  [color=#e0a45f]Ogohlantirish: chunk'lar tayyor emas "
+		+ "(yer %d, bino %d) — surat to'liq bo'lmagan bo'lishi mumkin[/color]"
+		% [chunks.pending_count(), buildings.pending_count()])
 
 
 ## Ko'tarilgan ko'rinish uchun tayyorgarlik.

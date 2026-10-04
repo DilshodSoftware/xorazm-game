@@ -36,7 +36,17 @@ const OLIB_TASHLASH_RADIUSI := 125.0
 ## Vazifa sharti: "40 tagacha". O'lchov: 40 ta piyoda = 240 chizish —
 ## `Traffic` moduli 20–35 ta mashina chizadi, shuning uchun 40 ta
 ## piyoda + 25 ta mashina hali ham ko'rsatiladigan chegarada.
-const KOP_CHEGARASI := 40
+## Bir vaqtda ko'rsatiladigan eng ko'p piyoda.
+##
+## DIQQAT: o'lchov bilan kamaytirilgan. 40 ta piyoda har biri 6 ta
+## alohida qism (bosh, tana, 2 qo'l, 2 oyoq) bo'lgani uchun 240 ta
+## chizqich qo'shilardi: 46,7 FPS dan 30,3 FPS ga tushdi
+## (1280×720, Intel UHD ICL GT1, trafik bilan).
+##
+## 16 ta piyoda — 96 ta chizqich, taxminan −5 FPS. Zaxirada qolgan
+## 24 ta piyodalar uzoqroqda qo'shilishi mumkin, lekin Intel UHD'da
+## har biri narah.
+const KOP_CHEGARASI := 16
 
 ## Bir ko'chada 1 ta piyoda shu masofada (m) — zichlik.
 ##
@@ -58,7 +68,12 @@ const BAND_ORALIGI := 6.0
 ## O'LCHOV: 1,75 m li odam 70 m da 720 pikselli ekranda ~17 pikselli
 ## bo'ladi (1 sm kichik detail allaqachon ko'rinmaydi). Undan uzoqda
 ## chizish sarfini sarflamak — o'rin/xarajat.
-const KORINISH_CHEGARASI := 70.0
+## Bu masofadan uzoqdagi piyodalar YASHIRILADI (chizilmaydi).
+##
+## DIQQAT: 70 m dan 45 m ga kamaytirildi — o'lchovda chizqich
+## sonini kesilishdan ko'ra qisqartirish ko'proq yordam berdi
+## (chizqich 3 m dan uzoqda ham xuddi shunday ko'rinadi).
+const KORINISH_CHEGARASI := 45.0
 
 ## Yo'l ro'yxatini qayta ko'rib chiqishning oralig'i (s).
 ## Har kadrda emas: bu faqat "kimse kerakmi?" savoliga javob beradi,
@@ -227,6 +242,16 @@ func _toldirish(here: Vector2) -> void:
 			if nuqta.distance_to(here) > YUKLASH_RADIUSI:
 				continue
 			slotlar.append(along)
+			# DIQQAT: chegara ICHKI siklda ham tekshirilishi shart.
+			# Avval u faqat tashqi siklda bor edi — bitta ko'cha
+			# `URINISH_SONI` (14) marta urinib, chegaradan OSHIB
+			# ketishi mumkin edi (sinovda 16 ta chegarada 17 ta
+			# yaratildi). Ichki siklda `break` yo'q, chunki bir
+			# ko'chada bir necha piyoda kerak (jonli ko'cha) —
+			# lekin chegara har bir yaratishda tekshirilishi
+			# majburiy.
+			if piyodalar.size() >= KOP_CHEGARASI:
+				return
 			_yaratish(nomzod, along)
 
 
@@ -266,6 +291,11 @@ static func _yo_l_nuqtasi(nomzod: Dictionary, along: float) -> Vector2:
 
 
 func _yaratish(nomzod: Dictionary, along: float) -> void:
+	# DIQQAT: chegara IKKINCHI MARTA tekshiriladi (himoya). Yuqorida
+	# va ichki siklda bor, lekin chegara — bitta son, uni
+	# qo'llashning yagona joyi bo'lishi kerak.
+	if piyodalar.size() >= KOP_CHEGARASI:
+		return
 	var tomon: float = 1.0 if _rng.randf() > 0.5 else -1.0
 	var piyoda := Pedestrian.create(self, _rng.randi(), -1)
 	piyoda.traffic = traffic

@@ -103,6 +103,12 @@ func _build_streets() -> void:
 						Palette.STREET_EDGE, Vector3.UP, false)
 				previous = sample
 
+	# --- Xiva eski shahari ---
+	# DIQQAT: Xiva o'z ko'chalariga ega (Tandirchi kabi) va
+	# ularning yuzasi boshqacha — g'isht, trotuarli. Shuning uchun
+	# u umumiy `MeshBuilder` ga qo'shiladi, lekin alohida quriladi.
+	KhivaBuildings.build_streets(builder)
+
 	builder.commit(holder, "Mesh")
 
 
@@ -137,12 +143,20 @@ func _rebuild(centre: Vector2i) -> void:
 		return (a - centre).length_squared() < (b - centre).length_squared())
 
 
-## Bu chunk'da Tandirchi binosi bormi?
+## Bu chunk'da bino bormi? (Tandirchi yoki Xiva)
+##
+## DIQQAT: avval faqat `Tandirchi.bounds()` tekshirilardi. Bu
+## Xiva shahri butunlay YO'Q qilardi: `_rebuild` shu funksiya
+## asosida chunk'larni saralaydi, shuning uchun Xiva chunk'lari
+## `_pending` ga hech qachon tushmasdi va `_build_chunk` chaqirilmasdi
+## — o'yinchi Xivaga ko'chsa ham sahifada faqat qum ko'rardi
+## (o'lchovda shunday bo'ldi).
 static func _has_content(coord: Vector2i) -> bool:
 	var size: float = Settings.CHUNK_SIZE
 	var rect := Rect2(
 		Vector2(coord.x * size, coord.y * size), Vector2(size, size))
-	return rect.intersects(Tandirchi.bounds())
+	return rect.intersects(Tandirchi.bounds()) \
+		or rect.intersects(Khiva.bounds())
 
 
 func _build_chunk(coord: Vector2i) -> void:
@@ -171,6 +185,18 @@ func _build_chunk(coord: Vector2i) -> void:
 		CourtyardHouse.build(builder, centre, float(plot["yaw"]),
 			float(plot["front"]), float(plot["chuqur"]), int(plot["qavat"]),
 			rng, int(plot["uslub"]))
+
+	# --- Xiva binolari ---
+	# DIQQAT: Xiva binolari Tandirchi uylaridan TUBUTAY farq qiladi
+	# (sariq g'isht, minoralar, madrasalar, devor), shuning uchun
+	# alohida quriladi. Chunk'lar bo'yicha bo'linadi — Xiva
+	# o'yinchi uzoqda bo'lsa, bu yerda hech narsa chizilmaydi
+	# (`area.has_point` darhol chiqadi).
+	for plot: Dictionary in Khiva.plots():
+		var kcentre: Vector2 = plot["markaz"]
+		if not area.has_point(kcentre):
+			continue
+		KhivaBuildings.build_plot(builder, plot)
 
 	if builder.is_empty():
 		return

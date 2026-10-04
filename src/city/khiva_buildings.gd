@@ -56,6 +56,17 @@ const SHIFA := Color("241a12")               ## Teshik ichi (qorong'i)
 const QORONG_I_KOK := Color("1d4e5c")       ## Deraza orqasidagi soyaga
 const XAST_TOMI := Color("cbbc9a")           ## Xast Imam tomini
 
+## XIVA KO'CHASI — qumlo g'isht (tosh ustama).
+##
+## NIMA UCHUN `Palette.STREET_EARTH` emas: u Tandirchi uchun
+## tanlangan juda to'q rang ("6f5d3c") — u yerda ko'cha nam va
+## iflos ko'rinishi kerak. Xivada esa ko'chalar QURUQQIZ, toza
+## qumlo g'isht bilan qoplangan va shaharning och sariq g'ishti
+## bilan bir xil. To'q rang ishlatilsa, ko'chalar shaharda "qora
+## chiziq" bo'lib ko'rinadi (birinchi suratda shunday bo'lgan edi).
+const KOCHA_RANG := Color("a89268")
+const KOCHA_CHETI := Color("8a7550")
+
 # ================================================================== O'LCHAM
 
 ## Devor qalinligi. Xiva devorlari Xorazm xalq uyidan qalinroq:
@@ -140,16 +151,16 @@ static func build_streets(builder: MeshBuilder) -> void:
 				}
 				if not oldingi.is_empty():
 					builder.add_quad(oldingi["chap"], namuna["chap"],
-						namuna["o'ng"], oldingi["o'ng"],
-						Palette.STREET_EARTH, Vector3.UP, false)
+						namuna["o'ng"], oldingi["o'ng"], KOCHA_RANG,
+						Vector3.UP, false)
 					# Yon chet — ko'cha chetidagi ariqcha (bordjura)
 					var chet: Vector3 = Vector3(0, -0.16, 0)
 					builder.add_quad(oldingi["chap"], namuna["chap"],
 						namuna["chap"] + chet, oldingi["chap"] + chet,
-						Palette.STREET_EDGE, Vector3.UP, false)
+						KOCHA_CHETI, Vector3.UP, false)
 					builder.add_quad(oldingi["o'ng"] + chet,
 						namuna["o'ng"] + chet, namuna["o'ng"], oldingi["o'ng"],
-						Palette.STREET_EDGE, Vector3.UP, false)
+						KOCHA_CHETI, Vector3.UP, false)
 				oldingi = namuna
 
 
@@ -213,6 +224,8 @@ static func build_uy(builder: MeshBuilder, markaz: Vector2, asos: float,
 	var p := Vector3(markaz.x, asos, markaz.y)
 	var qavatlar: Array[float] = [QAVAT_BIR, QAVAT_IKKINCHI, QAVAT_UCHINCHI]
 
+	# Birinchi qavat poli — pesho'na ham shundan boshlanadi
+	var pol_birinchi_qavat := asos + 0.56
 	# --- 1. Poydevor ---
 	var poydevor_rang: Color = BRICK.darkened(0.32) if _nozik(urish) < 0.5 \
 		else TOSH
@@ -220,7 +233,7 @@ static func build_uy(builder: MeshBuilder, markaz: Vector2, asos: float,
 		b * Vector3(en + 0.28, 0.56, chuqur + 0.28), poydevor_rang, 0.0, false)
 
 	# --- 2–3. Devorlar, tasmalar ---
-	var tepa := asos + 0.56
+	var tepa := pol_birinchi_qavat
 	for q in qavat:
 		var bal: float = qavatlar[q]
 		var rang: Color = BRICK if q == 0 else BRICK.lightened(0.05)
@@ -229,8 +242,12 @@ static func build_uy(builder: MeshBuilder, markaz: Vector2, asos: float,
 		if q < qavat - 1:
 			_tasma(builder, p, b, en, chuqur, tepa, 0.22, 0.15)
 
-	# --- 4. Pesho'na (ko'cha / −v tomonida) ---
-	_peshtaq(builder, p, b, en, chuqur, 2.30, 3.55, tepa)
+	# --- 4. Pesho'na (ko'cha / −v tomonida). Asosi — birinchi qavat
+	#    poli (poydevor usti), tepasi 3,55 m dan yuqorida.
+	#    DIQQAT: avval `tepa` (shift darajasi) berilgan edi — peshona
+	#    shift ustida paydo bo'lgan edi. `_peshtaq` oxirgi qiymatni
+	#    "peshona poydevori" deb o'qiydi.
+	_peshtaq(builder, p, b, en, chuqur, 2.30, 3.55, pol_birinchi_qavat)
 
 	# --- 5. Yassi tom + parapet ---
 	var tom_rangi: Color = BRICK_QORIQ if _nozik(urish + 3) < 0.45 else BRICK
@@ -240,7 +257,12 @@ static func build_uy(builder: MeshBuilder, markaz: Vector2, asos: float,
 
 	# --- 6. Uchinchi qatordagi gumbaz ---
 	if qavat >= 3:
-		var poy := _w(p, b, 0.0, 0.0, chuqur * 0.20) + Vector3(0, tepa, 0)
+		# DIQQAT: `tepa` MUTLAQ balandlik, `_w(..., 0.0, ...)` esa
+		# poydevor darajasida. Ularni qo'shsa, gumbaz shift ustidan
+		# yana `tepa` m ko'tarilib havoda suzib qoladi (birinchi
+		# suratda shunday ko'rindi). Shuning uchun mahalliy
+		# balandlikni (`tepa - p.y`) ishlatamiz.
+		var poy := _w(p, b, 0.0, tepa - p.y, chuqur * 0.20)
 		builder.add_cylinder(poy, poy + Vector3(0, 0.55, 0), 2.05, 12,
 			GISHT_SUVALAQ, true)
 		_gumbaz(builder, poy + Vector3(0, 0.55, 0), 2.05, 2.30, KOK, KREM,
@@ -285,16 +307,21 @@ static func _korpus(builder: MeshBuilder, p: Vector3, b: Basis, en: float,
 	# Derazalar — TO'RT devorda ham.
 	# [param tashqari] — mahalliy tashqi yo'nalish (qaysi yuzaga
 	#   qaragan), [param burchak] — o'sha yuzaning normal yaw i
+	#
+	# NIMA UCHUN `aniq` faqat peshonada: `lattice_window` ~100
+	# uchburchak (to'rt yong'oq + to'rt tayoq). Masjidi 46 m
+	# peshonasiga 13 ta qo'yilsa, 1300 uchburchak; yon devorlarga
+	# ham qo'yilsa, butun bino 7000+ uchburchakka chiqar edi va
+	# shaharda eng qimmat bino arzon chiqib ketar edi.
 	var yaw := _yaw(b)
-	var oldingi_y := y
-	_derazalar(builder, p, b, -chuqur * 0.5, en, oldingi_y, bal, aniq,
-		yaw + PI, Vector3(0, 0, -1))
-	_derazalar(builder, p, b, chuqur * 0.5, en, oldingi_y, bal, aniq,
-		yaw, Vector3(0, 0, 1))
-	_derazalar(builder, p, b, -en * 0.5, chuqur, oldingi_y, bal, aniq,
-		yaw - PI * 0.5, Vector3(-1, 0, 0))
-	_derazalar(builder, p, b, en * 0.5, chuqur, oldingi_y, bal, aniq,
-		yaw + PI * 0.5, Vector3(1, 0, 0))
+	_derazalar(builder, p, b, -chuqur * 0.5, en, y, bal, aniq,
+		yaw + PI, Vector3(0, 0, -1), 3.30, 4)
+	_derazalar(builder, p, b, chuqur * 0.5, en, y, bal, false,
+		yaw, Vector3(0, 0, 1), 3.30, 3)
+	_derazalar(builder, p, b, -en * 0.5, chuqur, y, bal, false,
+		yaw - PI * 0.5, Vector3(-1, 0, 0), 4.20, 2)
+	_derazalar(builder, p, b, en * 0.5, chuqur, y, bal, false,
+		yaw + PI * 0.5, Vector3(1, 0, 0), 4.20, 2)
 
 
 ## Bitta devor (mahalliy koordinatdagi ikki burchak orasida).
@@ -350,12 +377,14 @@ static func _parpet(builder: MeshBuilder, p: Vector3, b: Basis, en: float,
 
 
 ## Bir devordagi derazalar — tekis taqsimlanadi.
+##
+## [param qadam] — derazalar orasidagi masofa (m)
+## [param maks]  — bu devorda kamida nechta oyna (yuqoridan chiqmaydi)
 static func _derazalar(builder: MeshBuilder, p: Vector3, b: Basis, v: float,
 		uzunlik: float, qavat_y: float, bal: float, aniq: bool,
-		burchak: float, tashqari: Vector3) -> void:
-	var qadam: float = 2.30
+		burchak: float, tashqari: Vector3, qadam: float, maks: int) -> void:
 	var oyna_bal: float = minf(1.18, bal * 0.42)
-	var soni: int = int(floor((uzunlik - 1.40) / qadam))
+	var soni: int = mini(int(floor((uzunlik - 1.40) / qadam)), maks)
 	if soni < 1:
 		return
 	var bosh: float = -(float(soni) - 1.0) * qadam * 0.5
@@ -369,21 +398,21 @@ static func _derazalar(builder: MeshBuilder, p: Vector3, b: Basis, v: float,
 		_deraza(builder, markaz, burchak, 0.86, oyna_bal, aniq)
 
 
-## Bitta deraza.
+## Bitta deraza (16 uchburchak).
 ##
 ## NIMA UCHUN `BuildingKit.lattice_window` har yerga ishlatilmaydi:
 ## u to'rtta yong'oq va to'rtta tayoqdan yig'iladi — ~100 uchburchak.
-## Bir uyda 12 deraza bo'lsa, 1200 uchburchak; 120 uyda 144 000 —
-## butun shahar ko'rinmaganda qolardi. Arzon variant 16 uchburchak
-## va bir xil siluet beradi. Aniq binolarda (masjidi, madrasalari)
-## `lattice_window` ishlatiladi.
+## Bir uyda 14 deraza bo'lsa, 1400 uchburchak; 125 uyda 175 000 —
+## butun shaharni ko'rsatish mumkin bo'lmay qolardi. Arzon variant
+## 16 uchburchak va bir xil siluet beradi. Pesho'na devorlarida
+## (`aniq = true`) haqiqiy to'sh ishlatiladi.
 static func _deraza(builder: MeshBuilder, at: Vector3, yaw: float,
 		eni: float, bal: float, aniq: bool) -> void:
 	var b := Basis(Vector3.UP, yaw)
 	var normal := b * Vector3(0, 0, 1)
 	if aniq:
 		BuildingKit.lattice_window(builder, at, eni, bal, yaw)
-		# Aniq binolarda ustidan kafel kamari (lodan)
+		# Ustidan kafel kamari (lodan) — Xiva peshonasining belgisi
 		builder.add_box(at + b * Vector3(0, bal * 0.5 + 0.17, 0.03),
 			b * Vector3(eni + 0.36, 0.24, 0.16), KOK, 0.0, false)
 		return
@@ -402,11 +431,18 @@ static func _deraza(builder: MeshBuilder, at: Vector3, yaw: float,
 		at + b * Vector3(eni * 0.42, bal * 0.42, -0.03),
 		at + b * Vector3(-eni * 0.42, bal * 0.42, -0.03),
 		YOG_OCH, normal, false)
-	# 3. Supor taxta (ostida) + kafel kamari (ustida)
-	builder.add_box(at + b * Vector3(0, -bal * 0.5 - 0.09, 0.04),
-		b * Vector3(eni + 0.46, 0.18, 0.24), TOSH, 0.0, false)
-	builder.add_box(at + b * Vector3(0, bal * 0.5 + 0.14, 0.04),
-		b * Vector3(eni + 0.54, 0.28, 0.20), KREM, 0.0, false)
+	# 3. Supor taxta (ostida) va kafel kamari (ustida).
+	#
+	# DIQQAT: bu ikki quti ALOHIDA bo'lishi SHART. Avval bitta quti
+	# (`eni+0.50 × bal+0.40`) qo'yilib, u oyna teshigini to'liq
+	# yopgan edi — natijada devorda oyna emas, oq panellar ko'rindi
+	# (birinchi suratda shunday chiqdi). Ramka quti bo'lishi uchun
+	# to'rtta yong'oq kerak; lekin tepa va pastda bittadan yetarli:
+	# Xiva oynasi devor ichida qorq bo'lgandan keyin ramka ko'rinadi.
+	builder.add_box(at + b * Vector3(0, bal * 0.5 + 0.14, 0.05),
+		b * Vector3(eni + 0.54, 0.28, 0.22), KREM, 0.0, false)
+	builder.add_box(at + b * Vector3(0, -bal * 0.5 - 0.10, 0.05),
+		b * Vector3(eni + 0.46, 0.18, 0.28), TOSH, 0.0, false)
 
 
 # ------------------------------------------------------------------ PESHO'NA
@@ -418,13 +454,18 @@ static func _deraza(builder: MeshBuilder, at: Vector3, yaw: float,
 ##   2. ichida qorong'i eshik teshigi
 ##   3. ramka ustidagi ko'k kafel tasma + krem chegara
 ##   4. chertma (yog'och soyabon) — naqshkor ustunlar ustida
+## [param asos_y]   — peshona poydevorining BALANDLIGI (mutlaq).
+##   DIQQAT: avval bu qiymat "peshona tepasi" deb olingan edi va
+##   `_peshtaq(builder, ..., tepa)` ko'rinishida chaqirilgan edi —
+##   natijada peshona binoning TEPASIDA, shift ustida paydo bo'ldi
+##   (birinchi suratda chertma shift ustida suzib turgan edi).
 static func _peshtaq(builder: MeshBuilder, p: Vector3, b: Basis, en: float,
-		chuqur: float, pesh_en: float, pesh_bal: float, y_abs: float) -> void:
+		chuqur: float, pesh_en: float, pesh_bal: float, asos_y: float) -> void:
 	var yaw := _yaw(b)
 	var nb := Basis(Vector3.UP, yaw + PI)     # tashqi (−v) tomonga
 	var chiqish := 0.55
 	var peshona_v := -chuqur * 0.5 - chiqish * 0.5
-	var y := y_abs - p.y - pesh_bal            # peshona binosi tepasidan
+	var y := asos_y - p.y
 
 	# 1. Ramka: ikki yon ustun + tepa belog'i
 	for u in [-1.0, 1.0]:
@@ -661,7 +702,7 @@ static func build_sarvon_minor(builder: MeshBuilder, markaz: Vector2,
 ## minoroni "yorug' emas" qilib qo'yadi.
 static func _konus(builder: MeshBuilder, markaz: Vector3, y0: float, y1: float,
 		r0: float, r1: float, tomonlar: int, rang: Color, ust_rang: Color,
-		collision: bool = true) -> void:
+		collision: bool = true, qopish: bool = true) -> void:
 	if y1 - y0 < 0.001 or tomonlar < 3:
 		return
 	var past: Array[Vector3] = []
@@ -677,7 +718,9 @@ static func _konus(builder: MeshBuilder, markaz: Vector3, y0: float, y1: float,
 		var n := ((past[i] + past[j] + tepa[i] + tepa[j]) * 0.25 - ortacha)
 		builder.add_face(past[i], tepa[i], tepa[j], past[j],
 			n.normalized(), rang, collision)
-	# Yuqori va pastki yopish (yuqorisi hech qachon urilmaydi)
+	if not qopish:
+		return
+	# Yuqori va pastki yopish
 	var yuqori := markaz + Vector3(0, y1, 0)
 	var pastki := markaz + Vector3(0, y0, 0)
 	for i in tomonlar:
@@ -691,7 +734,7 @@ static func _konus(builder: MeshBuilder, markaz: Vector3, y0: float, y1: float,
 ## Ko'k kafel tasma (minora ustidagi naqshli halqa).
 static func _belt(builder: MeshBuilder, p: Vector3, y: float, bal: float,
 		r: float, tomonlar: int, rang: Color, chegara_rang: Color) -> void:
-	_konus(builder, p, y, y + bal, r, r, tomonlar, rang, rang, false)
+	_konus(builder, p, y, y + bal, r, r, tomonlar, rang, rang, false, false)
 	_halqa(builder, p + Vector3(0, y - 0.06, 0), r + 0.06, 0.12, tomonlar,
 		chegara_rang)
 	_halqa(builder, p + Vector3(0, y + bal - 0.06, 0), r + 0.06, 0.12,
@@ -701,7 +744,8 @@ static func _belt(builder: MeshBuilder, p: Vector3, y: float, bal: float,
 ## Ingichka halqa (silindr atrofida kichik korniz).
 static func _halqa(builder: MeshBuilder, markaz: Vector3, r: float,
 		bal: float, tomonlar: int, rang: Color) -> void:
-	_konus(builder, markaz, 0.0, bal, r, r, tomonlar, rang, rang, false)
+	_konus(builder, markaz, 0.0, bal, r, r, tomonlar, rang, rang, false,
+		false)
 
 
 # ================================================================== MASJID
@@ -720,22 +764,24 @@ static func build_kalon_masjidi(builder: MeshBuilder, markaz: Vector2,
 	var tepa := asos + devor_bal
 
 	_korpus(builder, p, b, en, chuqur, asos, devor_bal, BRICK, true)
-	_peshtaq_katta(builder, p, b, chuqur, 9.20, 5.40, devor_bal)
+	_peshtaq_katta(builder, p, b, chuqur, devor_bal + 1.30, 5.40)
 	_parpet(builder, p, b, en, chuqur, tepa, BRICK_QORIQ.lightened(0.06))
 
 	# To'rt burchakda kichik gumbaz ("gumbazli hujra")
 	for u in [-1.0, 1.0]:
 		for v in [-1.0, 1.0]:
-			var burchak := _w(p, b, u * (en * 0.5 - 3.4), 0.0,
+			# Silindr (poydevor) shift balandligidan BOSHLANADI va
+			# tepaga chiqadi. DIQQAT: ikkala uch ham MAHLALLIY
+			# balandlikda — `tepa` mutlaq, uni `_w` ga qo'shsa,
+			# gumbaz havoda suzib qoladi (birinchi suratda ko'rindi).
+			var burchak := _w(p, b, u * (en * 0.5 - 3.4), devor_bal,
 				v * (chuqur * 0.5 - 3.4))
-			var poy := burchak + Vector3(0, tepa, 0)
-			builder.add_cylinder(poy, poy + Vector3(0, 1.55, 0), 2.70, 12,
-				GISHT_SUVALAQ, true)
-			_gumbaz(builder, poy + Vector3(0, 1.55, 0), 2.70, 2.55, KOK,
-				KREM, 12, 1)
+			builder.add_cylinder(burchak, burchak + Vector3(0, 1.55, 0),
+				2.70, 12, GISHT_SUVALAQ, true)
+			_gumbaz(builder, burchak + Vector3(0, 1.55, 0), 2.70, 2.55,
+				KOK, KREM, 12, 1)
 	# Markaziy gumbaz (muqam-xona)
-	var markaziy := _w(p, b, -en * 0.5 + 10.0, 0.0, 0.0)
-	var poy2 := markaziy + Vector3(0, tepa, 0)
+	var poy2 := _w(p, b, -en * 0.5 + 10.0, devor_bal, 0.0)
 	builder.add_cylinder(poy2, poy2 + Vector3(0, 1.90, 0), 3.90, 12,
 		GISHT_SUVALAQ, true)
 	_gumbaz(builder, poy2 + Vector3(0, 1.90, 0), 3.90, 3.70, KOK, KREM,
@@ -746,54 +792,56 @@ static func build_kalon_masjidi(builder: MeshBuilder, markaz: Vector2,
 
 ## Katta peshtaq (masjidi va madrasalarni uchun).
 ##
-## [param chuqur] — bino chuqurligi; peshona shu chuqurlikning
-##   chetida, `tashqariga` tomonda quriladi.
-## [param pesh_bal] — peshona balandligi (devor ustidan qancha)
+## [param chuqur]    — bino chuqurligi; peshona shu chuqurlikning
+##   chetida, tashqariga tomonda quriladi.
+## [param pesh_bal]  — peshona BALANDLIGI yer sathidan (p.y dan
+##   boshlab, tepaga qarab). DIQQAT: bu "devor ustidan qancha"
+##   EMAS. Avval shunday yozilgan edi va quti 2 × balandlik bo'lib
+##   chiqib, madrasa tomidan 6 m o'tib ketgan edi (rasmda madrasa
+##   ustidan uzun quti ko'rinardi).
+## [param pesh_en]   — peshona oynasi kengligi
 static func _peshtaq_katta(builder: MeshBuilder, p: Vector3, b: Basis,
-		chuqur: float, pesh_bal: float, pesh_en: float, devor_bal: float) -> void:
+		chuqur: float, pesh_bal: float, pesh_en: float) -> void:
 	var nb := Basis(Vector3.UP, _yaw(b))
-	var markaz := p + nb * Vector3(0, 0, chuqur * 0.5 + 0.55)
-	var y := markaz.y
-	# Ikki yon ustun
+	# Pesho'na tekisligi — bino peshona devorining tashqi yuzasi
+	var tekis := _w(p, b, 0.0, 0.0, chuqur * 0.5 + 0.55)
+	# Ikki yon ustun (poydevordan tepaga)
 	for u in [-1.0, 1.0]:
-		builder.add_box(markaz + nb * Vector3(u * (pesh_en * 0.5 + 0.52),
-				0.0, 0.0) + Vector3(0, (devor_bal + pesh_bal) * 0.5 - y, 0.0),
-			nb * Vector3(1.05, pesh_bal + devor_bal * 0.5, 1.10),
-			BRICK_YORUG, 0.0, false)
+		builder.add_box(
+			tekis + b * Vector3(u * (pesh_en * 0.5 + 0.52), pesh_bal * 0.5, 0.0),
+			nb * Vector3(1.05, pesh_bal, 1.10), BRICK_YORUG, 0.0, false)
 	# Tepa belog'i
-	var belog := markaz + Vector3(0, devor_bal + pesh_bal + 0.30, 0)
+	var belog := tekis + Vector3(0, pesh_bal + 0.30, 0)
 	builder.add_box(belog, nb * Vector3(pesh_en + 2.10, 1.20, 1.25),
 		BRICK_YORUG, 0.0, false)
-	# Toqim (ark) — peshona ichidagi o'ylan kirish
-	# DIQQAT: balandlik `devor_bal` ning YARIMIDA, chunki u yer ostiga
-	# tushmasligi SHART. Avval tepani peshona balandligidan
-	# (`-(pesh_bal + devor_bal*0.5)`) hisoblab yozilgan edi — u
-	# Xast Imam madrasasida devor ostidan 0,8 m chiqib ketgan.
-	var toqim_past: float = devor_bal * 0.45
-	var toqim_yuqori: float = toqim_past + 2.60
+	# Toqim (ark) — peshona ichidagi o'ylan kirish.
+	# DIQQAT: balandlik peshona balandligining PROTSENTIDA, chunki
+	# u yer ostiga tushmasligi SHART (avval `devor_bal` dan
+	# hisoblanar edi — Xast Imamda devor ostidan 0,8 m chiqib ketdi).
+	var toqim_past: float = pesh_bal * 0.42
+	var toqim_yuqori: float = minf(toqim_past + 2.60, pesh_bal - 0.55)
 	builder.add_quad(
-		markaz + nb * Vector3(-(pesh_en - 1.30) * 0.5, toqim_past, 0.58),
-		markaz + nb * Vector3((pesh_en - 1.30) * 0.5, toqim_past, 0.58),
-		markaz + nb * Vector3((pesh_en - 1.30) * 0.5, toqim_yuqori, 0.58),
-		markaz + nb * Vector3(-(pesh_en - 1.30) * 0.5, toqim_yuqori, 0.58),
+		tekis + nb * Vector3(-(pesh_en - 1.30) * 0.5, toqim_past, 0.58),
+		tekis + nb * Vector3((pesh_en - 1.30) * 0.5, toqim_past, 0.58),
+		tekis + nb * Vector3((pesh_en - 1.30) * 0.5, toqim_yuqori, 0.58),
+		tekis + nb * Vector3(-(pesh_en - 1.30) * 0.5, toqim_yuqori, 0.58),
 		SHIFA, nb * Vector3(0, 0, 1), false)
 	# Ko'k kafel ramka — Xiva peshonasining asosiy belgisi
-	builder.add_box(markaz + nb * Vector3(0.0, pesh_bal - 0.45, 0.62)
-			+ Vector3(0, devor_bal - y, 0.0),
+	builder.add_box(tekis + nb * Vector3(0.0, pesh_bal - 0.45, 0.62),
 		nb * Vector3(pesh_en + 0.40, 0.35, 0.16), KOK, 0.0, false)
 	builder.add_box(belog + nb * Vector3(0, 0.78, 0.0),
 		nb * Vector3(pesh_en + 2.70, 0.34, 1.45), KOK, 0.0, false)
-	# Pesho'na ustidagi uchburchakli karniz
+	# Pesho'na ustidagi uchburchakli karniz (chertma)
 	for u in [-1.0, 1.0]:
 		builder.add_face(
-			markaz + nb * Vector3(u * (pesh_en + 2.10) * 0.5,
-				0.0, 0.72) + Vector3(0, devor_bal + pesh_bal + 0.90, 0.0),
-			markaz + nb * Vector3(u * (pesh_en * 0.5 + 0.52),
-				0.0, 0.0) + Vector3(0, devor_bal + pesh_bal + 0.90, 0.0),
-			markaz + nb * Vector3(u * (pesh_en * 0.5 + 0.52),
-				0.0, 0.0) + Vector3(0, devor_bal + 0.90, 0.0),
-			markaz + nb * Vector3(u * (pesh_en + 2.10) * 0.5,
-				0.0, 0.72) + Vector3(0, devor_bal + 0.90, 0.0),
+			tekis + nb * Vector3(u * (pesh_en + 2.10) * 0.5, 0.0, 0.72)
+				+ Vector3(0, pesh_bal + 0.90, 0.0),
+			tekis + nb * Vector3(u * (pesh_en * 0.5 + 0.52), 0.0, 0.0)
+				+ Vector3(0, pesh_bal + 0.90, 0.0),
+			tekis + nb * Vector3(u * (pesh_en * 0.5 + 0.52), 0.0, 0.0)
+				+ Vector3(0, pesh_bal - 0.30, 0.0),
+			tekis + nb * Vector3(u * (pesh_en + 2.10) * 0.5, 0.0, 0.72)
+				+ Vector3(0, pesh_bal - 0.30, 0.0),
 			nb * Vector3(0, 1, 0), KREM, false)
 
 
@@ -819,7 +867,7 @@ static func build_madrasa(builder: MeshBuilder, markaz: Vector2, asos: float,
 	_korpus(builder, p, b, en, chuqur, poydevor + qavat_bal,
 		balandlik - qavat_bal - 0.70, BRICK.lightened(0.06), true)
 	# --- Peshtoa (ko'cha tomonida) ---
-	_peshtaq_katta(builder, p, b, chuqur, qavat_bal * 2.05, 4.60, balandlik)
+	_peshtaq_katta(builder, p, b, chuqur, balandlik - 0.60, 4.60)
 	# --- Hovli devori (ichkarida) ---
 	_hovli_devor(builder, p, b, en, chuqur, poydevor)
 	# --- Tom va parapet ---
@@ -835,7 +883,7 @@ static func build_madrasa(builder: MeshBuilder, markaz: Vector2, asos: float,
 				_burchak_minorachasi(builder, p, b,
 					u * (en * 0.5 - 2.0), v * (chuqur * 0.5 - 2.0), tepa, 3.30)
 		# --- Markaziy qovurg'a gumbaz ---
-		var poy := _w(p, b, 0.0, 0.0, chuqur * 0.14) + Vector3(0, tepa, 0)
+		var poy := _w(p, b, 0.0, tepa - p.y, chuqur * 0.14)
 		builder.add_cylinder(poy, poy + Vector3(0, 0.85, 0), 3.75, 16,
 			GISHT_SUVALAQ, true)
 		_gumbaz(builder, poy + Vector3(0, 0.85, 0), 3.75, 4.20, KOK, KREM,
@@ -843,8 +891,8 @@ static func build_madrasa(builder: MeshBuilder, markaz: Vector2, asos: float,
 	else:
 		# --- Mir Arab: ikki burchakda kichik gumbaz ---
 		for v in [-1.0, 1.0]:
-			var poy2 := _w(p, b, -en * 0.5 + 2.4, 0.0,
-				v * (chuqur * 0.5 - 2.4)) + Vector3(0, tepa, 0)
+			var poy2 := _w(p, b, -en * 0.5 + 2.4, tepa - p.y,
+				v * (chuqur * 0.5 - 2.4))
 			builder.add_cylinder(poy2, poy2 + Vector3(0, 0.65, 0), 2.45, 12,
 				GISHT_SUVALAQ, true)
 			_gumbaz(builder, poy2 + Vector3(0, 0.65, 0), 2.45, 2.30, KOK,
@@ -910,7 +958,7 @@ static func build_xast_imam(builder: MeshBuilder, markaz: Vector2, asos: float,
 		_xz(_w(p, b, (en - 3.2) * 0.5, 0.0, (chuqur - 2.4) * 0.5)),
 		balandlik, 0.32, XAST_TOMI)
 	_parpet(builder, p, b, en - 3.2, chuqur - 2.4, balandlik, XAST_TOMI)
-	_peshtaq_katta(builder, p, b, chuqur, 3.60, 3.40, 8.10)
+	_peshtaq_katta(builder, p, b, chuqur, 5.40, 3.40)
 
 
 # ================================================================== TEPALIK

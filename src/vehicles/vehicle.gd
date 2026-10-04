@@ -216,6 +216,64 @@ func _build() -> void:
 ## DIQQAT: material `MeshBuilder.commit` orqali qo'yiladi, qo'lda
 ## emas — aks holda vertex ranglari (kuzov rangi, shisha, chiroq)
 ## ishlamaydi va orqa yuzalar cull qilinadi.
+## Barcha mashinalar uchun umumiy material (bir marta yaratiladi).
+static var _shared_body_material: StandardMaterial3D = null
+
+
+## Kuzov geometriyasini umumiy material bilan yig'adi.
+##
+## DIQQAT: bu alohida funksiya, chunki `MeshBuilder.commit()` har
+## chaqiruvda YANGI material yaratadi. 76 ta mashina uchun 76 ta
+## alohida material — `gl_compatibility` renderer har biriga shayder
+## variantini qayta kompilyatsiya qiladi.
+##
+## O'lchov: 0 ta mashina 9,5 s, 1 ta mashina 40 s (40 kadr).
+## Bo'lish mumkin, chunki rang mesh VERTEX ranglarida saqlanadi —
+## material barchasi uchun bir xil.
+## Kuzov MESH'i model + rang bo'yicha keshlanadi.
+static var _body_cache: Dictionary = {}
+
+
+static func _build_shared_body(parent: Node3D, spec: Dictionary,
+		colour: Color) -> void:
+	if _shared_body_material == null:
+		_shared_body_material = StandardMaterial3D.new()
+		_shared_body_material.vertex_color_use_as_albedo = true
+		_shared_body_material.roughness = 0.38
+		_shared_body_material.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX
+		_shared_body_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+	# DIQQAT: geometriya GDScript sikllari bilan chiziladi (~4000
+	# uchburchak, har biri uchta `add_vertex` chaqiruvi). Bir
+	# mashinani qurish sekin — ko'chada 76 ta mashina bo'lsa, har
+	# birini alohida qurish 30 s yig'iladi (o'lchov: 0 ta mashina
+	# 9,5 s, 1 ta mashina 40 s).
+	#
+	# Yechim: bir xil model + bir xil rang bitta mesh bo'ladi.
+	# 76 ta mashina 5 model × 5 rang = ~25 ta qurish.
+	var key := "%s|%s" % [spec["kalit"], colour.to_html(false)]
+	var mesh: Mesh = null
+	if _body_cache.has(key):
+		mesh = _body_cache[key]
+	else:
+		var builder := MeshBuilder.new()
+		builder.want_collision = false
+		CarShapes.build(builder, spec, Vector3.ZERO, colour, false)
+		if builder.is_empty():
+			push_error("Mashina kuzovi bo'sh qoldi: %s" % spec["kalit"])
+			return
+		mesh = builder.build_mesh()
+		_body_cache[key] = mesh
+
+	var node := MeshInstance3D.new()
+	node.name = "Kuzov"
+	node.mesh = mesh
+	node.material_override = _shared_body_material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(node)
+
+
+
 func _build_body() -> void:
 	var builder := MeshBuilder.new()
 	builder.want_collision = false
@@ -229,7 +287,17 @@ func _build_body() -> void:
 	# tushib, har biriga ~4000 uchburchak qo'shardi — FPS 60 dan
 	# 1 gacha tushdi (40 kadr: 0,7 s dan 40 s ga). Past quyosh
 	# soyasi uzoqda ham deyarli ko'rinmaydi.
-	builder.commit(self, "Kuzov", 0.38, physics_driven, true)
+	# DIQQAT: material BARCHA mashinalar o'rtasida BO'LINADI.
+	#
+	# Har bir mashina uchun alohida StandardMaterial3D yaratilsa,
+	# `gl_compatibility` renderer har biriga shayder variantini
+	# qayta kompilyatsiya qiladi: ko'chada 76 ta mashina = 30 s
+	# qo'shimcha WAQT (o'lchovda aniqlandi: 0 ta mashina 9,5 s,
+	# 1 ta mashina 40 s).
+	#
+	# Bo'lish mumkin, chunki rang mesh VERTEX ranglarida — material
+	# barchasi uchun bir xil (vertex_color_use_as_albedo).
+	_build_shared_body(self, spec, colour)
 
 
 ## Zarba shakli.
@@ -296,20 +364,36 @@ func _build_wheels() -> void:
 
 ## Bitta g'ildorak mesh'i — to'rt g'ildorak ham, hamma mashinalar ham
 ## bitta nusxani ishlatadi.
+static var _wheel_cache: Dictionary = {}
+static var _shared_wheel_material: StandardMaterial3D = null
+
+
+## G'ildorak mesh'i — O'LCHAM BO'YICHA KESHLANADI.
+##
+## DIQQAT: avval har bir mashina o'z g'ildorak mesh'ini qurardi
+## (76 ta alohida mesh + material). Endi bir xil radius/En kombinatsiya
+## uchun bitta nusxa ishlatiladi.
 func _wheel_visual_mesh() -> Mesh:
 	if _wheel_mesh != null:
+		return _wheel_mesh
+	var key := "%0.3f_%0.3f" % [float(spec["radius"]),
+		float(spec["en_kenglik"])]
+	if _wheel_cache.has(key):
+		_wheel_mesh = _wheel_cache[key]
 		return _wheel_mesh
 	var builder := MeshBuilder.new()
 	builder.want_collision = false
 	CarShapes.build_wheel(builder, float(spec["radius"]),
 		float(spec["en_kenglik"]))
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.86
-	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if _shared_wheel_material == null:
+		_shared_wheel_material = StandardMaterial3D.new()
+		_shared_wheel_material.vertex_color_use_as_albedo = true
+		_shared_wheel_material.roughness = 0.86
+		_shared_wheel_material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+		_shared_wheel_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_wheel_mesh = builder.build_mesh()
-	_wheel_mesh.surface_set_material(0, mat)
+	_wheel_mesh.surface_set_material(0, _shared_wheel_material)
+	_wheel_cache[key] = _wheel_mesh
 	return _wheel_mesh
 
 
@@ -344,12 +428,25 @@ func _physics_process(delta: float) -> void:
 	var contacts := 0
 	var normal_forces: Array[float] = [0.0, 0.0, 0.0, 0.0]
 	var hits: Array[Vector3] = []
+	_last_torque = Vector3.ZERO
 
 	for i in _wheel_attach.size():
 		var attachment: Vector3 = global_transform * _wheel_attach[i]
 		var radius: float = float(spec["radius"])
 		# Nishat korpus qutisining OSTIDAN boshlanadi (yuqoraga qarang)
-		var ray_origin: Vector3 = origin + up * RAY_ORIGIN_Y
+
+		# DIQQAT: avval BARCHA to'rtta nishat MASHINANING MARKAZIDAN
+		# chiqardi (`origin + up * balandlik`) — `_wheel_attach` ning
+		# X/Z qismi ishlatilmagan edi. Natijada to'rt g'ildorak bir
+		# xil nuqtada yerga urildi, `lever` deyarli nol bo'ldi va
+		# momentlar bir-birini bekor qildi: jamlangan moment
+		# (−7, 0, −3) N·m. Sinovda shunday ko'rindi — to'liq burishda
+		# burchak 0° qoldi.
+		#
+		# Endi nishat har bir g'ildorakning o'z nuqtasidan
+		# chiqadi, lekin korpus qutisining OSTIDA qoladi.
+		var ray_origin: Vector3 = global_transform * Vector3(
+			_wheel_attach[i].x, RAY_ORIGIN_Y, _wheel_attach[i].z)
 		var reach: float = radius + SUSPENSION_TRAVEL + 0.06
 		var query := PhysicsRayQueryParameters3D.create(
 			ray_origin, ray_origin - up * RAY_REACH)
@@ -382,12 +479,19 @@ func _physics_process(delta: float) -> void:
 			- sinking * SUSPENSION_DAMPING
 		force = clampf(force, 0.0, 60000.0)
 		normal_forces[i] = force
-		# DIQQAT: `RigidBody3D.apply_force(kuch, nuqta)` —
-		# KUCH birinchi. Teskari yozilsa (nuqta, kuch), kuch
-		# nuqta sifatida, nuqta kuch sifatida o'tadi va hech narsa
-		# qimirlamaydi. Sinovda shunday chiqdi: gaz berilgan
-		# mashina 0,00 km/soat.
-		apply_force(normal * force, point - origin)
+		# Kuch markazda qo'llanadi, moment alohida hisoblanadi.
+		#
+		# DIQQAT: `apply_force(kuch, nuqta)` ning nuqta argumenti
+		# shu jismda moment hosil qilmadi — sinovda aniqlandi:
+		# `apply_torque(5000 N·m)` → 49° aylanish, lekin bir xil
+		# miqdordagi kuch `apply_force` orqali aylantirmadi.
+		# Shuning uchun endi kuch va moment AJRATILADI:
+		#   * kuch — markazda (tormoq kuchi yo'q)
+		#   * moment — `lever × kuch` orqali, ochiq formula bilan
+		# Bu shaklda natija nazorat ostida va o'qilishi mumkin.
+		var lever: Vector3 = point - origin
+		apply_force(normal * force)
+		apply_torque(lever.cross(normal * force))
 	_on_floor = contacts > 0
 	_last_forces = normal_forces
 	_last_hits = hits
@@ -522,7 +626,11 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 		var long_force: float = clampf(total, -limit * 1.25, limit * 1.25)
 
 		_last_side[i] = side_force
-		apply_force(forward * long_force + side * side_force, lever)
+		# Xuddi shuningdek: kuch markazda, moment alohida.
+		var tyre: Vector3 = forward * long_force + side * side_force
+		apply_force(tyre)
+		_last_torque += lever.cross(tyre)
+		apply_torque(lever.cross(tyre))
 
 
 # ================================================================ KIRISH
@@ -603,6 +711,14 @@ func contact_points() -> Array[Vector3]:
 ## Oxirgi kadrda hisoblangan yon kuch (sinov uchun).
 func side_forces_now() -> Array[float]:
 	return _last_side
+
+
+## Jamlangan moment (sinov uchun).
+func torque_now() -> Vector3:
+	return _last_torque
+
+
+var _last_torque := Vector3.ZERO
 
 
 var _last_side: Array[float] = [0.0, 0.0, 0.0, 0.0]

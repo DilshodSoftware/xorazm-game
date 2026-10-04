@@ -563,7 +563,65 @@ static func is_over_water(x: float, z: float) -> bool:
 ##
 ## Qaytaradi: {"nuqta": Vector2, "yo'nalish": Vector2, "orasidagi":
 ## float, "chegara": bool, "yo'l": String, "tur": int, "y": float}
-static func point_along(index: int, along: float) -> Dictionary:
+## Har bir yo'lning KUMULATIV uzunlik jadvali va umumiy uzunligi.
+##
+## NIMA UCHUN (o'lchov bilan aniqlangan)
+## `point_along()` va `road_length()` har chaqiruvda nuqtalar qatorini
+## BOSHDAN yurib o'tardi — O(n). Trafik bitta kadrda har bir yo'l uchun
+## `gap` marta (62…130) urinish qiladi, ya'ni 34 yo'l × 130 × 2 = 8840
+## to'liq yurish. Natijada bitta kadr 591 ms egalladi va o'yin
+## 60 FPS dan 1 FPS ga tushadi.
+##
+## Endi jadval bir marta `_ensure()` da quriladi: `point_along` faqat
+## kerakli bo'lakni topadi, `road_length` esa bir qarash.
+static var _cumulative: Array[PackedFloat32Array] = []
+static var _lengths: PackedFloat32Array = PackedFloat32Array()
+## Har bir yo'lning eng kichik va eng katta nuqtasi (2D).
+## Trafik uzoqdagi yo'llarni umuman tekshirmasligi uchun kerak:
+## 34 yo'l × 130 urinish = 4420 keraksiz `point_along` chaqiruvi.
+static var _boxes_lo: PackedVector2Array = PackedVector2Array()
+static var _boxes_hi: PackedVector2Array = PackedVector2Array()
+
+
+static func _build_tables() -> void:
+	_cumulative.clear()
+	_lengths = PackedFloat32Array()
+	_lengths.resize(_roads.size())
+	_boxes_lo = PackedVector2Array()
+	_boxes_hi = PackedVector2Array()
+	for i in _roads.size():
+		var points: PackedVector2Array = _roads[i]["nuqta"]
+		if points.size() > 0:
+			var lo: Vector2 = points[0]
+			var hi: Vector2 = points[0]
+			for k in points.size():
+				lo.x = minf(lo.x, points[k].x)
+				lo.y = minf(lo.y, points[k].y)
+				hi.x = maxf(hi.x, points[k].x)
+				hi.y = maxf(hi.y, points[k].y)
+			_boxes_lo.append(lo)
+			_boxes_hi.append(hi)
+		var table := PackedFloat32Array()
+		var total := 0.0
+		if points.size() >= 2:
+			table.append(0.0)
+			for k in range(points.size() - 1):
+				total += points[k].distance_to(points[k + 1])
+				table.append(total)
+		_lengths[i] = total
+		_cumulative.append(table)
+
+
+## [param with_height] — qo'lda `TerrainGen.height_at` ni ham
+## hisoblasinmi?
+##
+## DIQQAT: O'LCHOV BILAN ANIQLANGAN ASOSIY SABAB. Balandlik
+## protsedural (shovin + tekislash + yo'l profili) — bitta chaqiruv
+## qimmat. Trafik bitta kadrda bu funksiyani 8840 marta chaqiradi
+## (34 yo'l × 130 urinish × 2), natijada bitta kadr 631 ms.
+## Balandlik faqat MASHINA qo'yilganda kerak — bitta kadrda 35 marta.
+static func point_along(index: int, along: float,
+		with_height: bool = false) -> Dictionary:
 	_ensure()
 	var fallback := {
 		"nuqta": Vector2.ZERO, "yo'nalish": Vector2.RIGHT,
@@ -577,46 +635,51 @@ static func point_along(index: int, along: float) -> Dictionary:
 	if points.size() < 2:
 		return fallback
 
-	var total := 0.0
-	for i in range(points.size() - 1):
-		total += points[i].distance_to(points[i + 1])
+	var total: float = _lengths[index]
 	if total < 0.001:
 		return fallback
 	# Chekishdan tashqariga chiqsa — boshiga qaytadi
 	var wrapped: float = fposmod(along, total)
-	var walked := 0.0
+	var table: PackedFloat32Array = _cumulative[index]
 	for i in range(points.size() - 1):
-		var a: Vector2 = points[i]
-		var b: Vector2 = points[i + 1]
-		var ab: Vector2 = b - a
-		var length: float = ab.length()
-		if walked + length >= wrapped:
-			var t: float = (wrapped - walked) / maxf(length, 0.0001)
-			var spot: Vector2 = a + ab * t
+		if table[i + 1] >= wrapped:
+			var a: Vector2 = points[i]
+			var b: Vector2 = points[i + 1]
+			var span: float = table[i + 1] - table[i]
+			var t: float = (wrapped - table[i]) / maxf(span, 0.0001)
+			var spot: Vector2 = a.lerp(b, t)
+			var along_dir: Vector2 = (b - a) / maxf(span, 0.0001)
 			return {
 				"nuqta": spot,
-				"yo'nalish": ab / maxf(length, 0.0001),
+				"yo'nalish": along_dir,
 				"orasidagi": wrapped,
 				"chegara": i > 0 and i < points.size() - 2,
 				"yo'l": road["nom"],
 				"tur": int(road["tur"]),
-				"y": TerrainGen.height_at(spot.x, spot.y),
+				"y": TerrainGen.height_at(spot.x, spot.y) if with_height else 0.0,
 				"uzunlik": total,
 			}
-		walked += length
 	return fallback
+
+
+## Nuqtaga yaqinligi (gacha bo'lgan minimal masofa) yo'l chegarasi
+## ichida yoki yo'q.
+static func road_is_near(index: int, point: Vector2, reach: float) -> bool:
+	if index < 0 or index >= _boxes_lo.size():
+		return false
+	var lo: Vector2 = _boxes_lo[index]
+	var hi: Vector2 = _boxes_hi[index]
+	var closest := Vector2(
+		clampf(point.x, lo.x, hi.x), clampf(point.y, lo.y, hi.y))
+	return closest.distance_to(point) <= reach
 
 
 ## Yo'ldagi nuqtalar (kinematik mashina uchun).
 static func road_length(index: int) -> float:
 	_ensure()
-	if index < 0 or index >= _roads.size():
+	if index < 0 or index >= _lengths.size():
 		return 0.0
-	var points: PackedVector2Array = _roads[index]["nuqta"]
-	var total := 0.0
-	for i in range(points.size() - 1):
-		total += points[i].distance_to(points[i + 1])
-	return total
+	return _lengths[index]
 
 
 ## Nuqtaga eng yaqin yo'l nuqtasi. AI mashinalari shundan foydalanadi
@@ -712,6 +775,8 @@ static func _ensure() -> void:
 	_build_khiva_streets()
 	_build_dirt_roads()
 	_index()
+	# Uzunlik jadvali — `point_along` va `road_length` shundan foydalanadi
+	_build_tables()
 	_ready = true
 
 

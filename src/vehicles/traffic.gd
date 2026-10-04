@@ -110,16 +110,11 @@ func force_refresh() -> void:
 	_manage_travelling(here, 0.0)
 
 
-var _sayac := 0
-
 func _process(delta: float) -> void:
 	if _target == null:
 		return
-	_sayac += 1
-	if _sayac == 30 or _sayac == 300:
-		print_rich("  [color=#a89d8a]TRAFIK: harakatlanuvchi %d, qo'yilgan %d[/color]" % [
-			cars.size(), parked.size()])
-	var here: Vector2 = Vector2(_target.global_position.x, _target.global_position.z)
+	var here: Vector2 = Vector2(_target.global_position.x,
+		_target.global_position.z)
 	_manage_travelling(here, delta)
 	_manage_parked(here)
 
@@ -160,6 +155,12 @@ func _manage_travelling(here: Vector2, delta: float) -> void:
 
 	# Yetishmagan mashinalarni qo'shish
 	for index: int in wanted:
+		# UZOQ YO'LLARNI UMUMAN TEKSHIRMAYDI.
+		# O'LCHOV: aks holda bitta kadrda 34 yo'l × 130 urinish
+		# = 4420 `point_along` chaqiruvi — bir kadr 67 ms.
+		# Chegara bilan faqat o'yinchi atrofidagi yo'llar qoladi.
+		if not RoadNetwork.road_is_near(index, here, SPAWN_RADIUS + 120.0):
+			continue
 		var slots: Array = _lanes.get(index, []) as Array
 		var gap := GAP_HIGHWAY
 		match int(roads[index]["tur"]):
@@ -170,13 +171,18 @@ func _manage_travelling(here: Vector2, delta: float) -> void:
 		var need: int = int(clampf(RoadNetwork.road_length(index) / gap,
 			1.0, 7.0))
 
-		for attempt in gap:
+		# Urinishlar soni cheklangan: 8 ta yetarli. 130 ta urinish
+		# keraksiz (yuqoridagi chegara bilan yo'llar kam qoladi).
+		for attempt in 8:
 			if slots.size() >= need:
 				break
 			var along: float = _rng.randf() * RoadNetwork.road_length(index)
 			if _too_close(slots, along, 9.0):
 				continue
-			var spot := RoadNetwork.point_along(index, along)
+			# Balandlik SHART: mashina shu balandlikda qo'yiladi.
+			# `point_along` uni ixtiyoriy qilgan (o'lchov sababli),
+			# shuning uchun qo'yishda so'rash SHART.
+			var spot: Dictionary = RoadNetwork.point_along(index, along, true)
 			# Faqat o'yinchiga yaqin yo'llarda
 			var near: float = Vector2(
 				spot["nuqta"]).distance_to(here)
@@ -197,7 +203,7 @@ func _drive(car: Vehicle, index: int, along: float, delta: float,
 	var lane := 1.7
 	var speed: float = float(car.get_meta("tezlik_maqsad", SPEED_STREET))
 	var next_along: float = along + speed / 3.6 * delta
-	var spot := RoadNetwork.point_along(index, next_along)
+	var spot := RoadNetwork.point_along(index, next_along, true)
 	var point: Vector2 = spot["nuqta"]
 	var direction: Vector2 = spot["yo'nalish"]
 	# Yo'nalishga 90° burilgan yo'nalish — mashinaning o'ng tomoni
@@ -350,7 +356,7 @@ func _parked_places() -> Array[Dictionary]:
 		var count: int = int(minf(length / 95.0, 3.0))
 		for k in count:
 			var along: float = _rng.randf() * length
-			var spot2 := RoadNetwork.point_along(i, along)
+			var spot2 := RoadNetwork.point_along(i, along, true)
 			var point2: Vector2 = spot2["nuqta"]
 			var right2: Vector2 = (spot2["yo'nalish"] as Vector2).orthogonal()
 			var edge: float = RoadNetwork.HALF_WIDTH[int(road["tur"])] - 1.15

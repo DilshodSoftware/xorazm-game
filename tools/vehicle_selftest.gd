@@ -632,6 +632,27 @@ func _test_driving() -> void:
 	print_rich("      [color=#a89d8a]Burish kuchlari: %s; burchak %.2f; "
 		% [str(car.side_forces_now()), car.steer_now]
 		+ "aylanish tezligi %.3f rad/s[/color]" % car.angular_velocity.y)
+	print_rich("      [color=#a89d8a]Jamlangan moment: "
+		+ str(car.torque_now().snapped(Vector3(1, 1, 1)))
+		+ " kadrlar=" + str(car.integration_steps()) + "[/color]")
+
+	# --- BEVOSITA MOMENT SINOVI ---
+	#
+	# Savol: jism umuman aylanadimi? `apply_torque` bilan bevosita
+	# 5000 N·m bersak:
+	#   * aylansa  → muammo kuchning TATBIQIDA (lever yoki normal)
+	#   * aylanmasa → muammo JISMNING O'ZIDA: korpus biror narsa
+	#                 bilan qisilgan, inersiya noto'g'ri, yoki
+	#                 `angular_damp` juda katta
+	var spin_start: float = car.global_rotation.y
+	for i in 40:
+		car.apply_torque(Vector3(0.0, 5000.0, 0.0))
+		await get_tree().physics_frame
+	print_rich("      [color=#a89d8a]BEVOSITA MOMENT: apply_torque(5000 N·m) "
+		+ "→ %.1f° (%.1f rad/s, qarshilik %.2f)[/color]" % [
+			rad_to_deg(absf(wrapf(car.global_rotation.y - spin_start,
+				-PI, PI))), car.angular_velocity.y, car.angular_damp])
+
 	_check("Mashina buriladi", turned > 0.08,
 		"(%.0f gradus, %.1f km/soat)" % [rad_to_deg(turned), car.speed_kmh])
 

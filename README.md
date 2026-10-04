@@ -355,6 +355,35 @@ chizilmaydi — stansiya turi `CABIN` dan o'zgarganda yuzaning o'zi
 shishaga aylanadi. Kabina g'ildorak o'qiga bog'langan, g'ildorak
 oynalari yarim doira shaklida.
 
+### ⚠️ VAQTINCHA O'CHIRILGAN: trafik sekinlashtiradi
+
+Trafik **mantiqan to'liq ishlaydi** (sinovlar o'tadi, mashinalar
+yo'lda, o'ng tomonda) lekin **kadr tezligini 4 barobar
+pasaytiradi**:
+
+| Holat | 40 kadr (1280×720, Intel UHD ICL GT1) |
+|---|---|
+| 4-bosqich (trafiksiz, o'yinchi mashinasiz) | ~0,7 s |
+| O'yinchi mashinasi bor, trafiksiz | 9,8 s |
+| Trafik bilan | 40,4 s |
+
+Son emas, mexanizm: 1 ta ham harakatlanuvchi mashina qo'shilsa,
+qolgan 34 tasi qo'shilsa ham bir xal natija chiqadi. Rad etilgan
+gumonlar (o'lchov bilan): soya, mashina mesh'lari, zarba shakli,
+har kadrda joyini yangilash, g'ildorak aylanishi.
+
+Eng ehtimoliy sabab: `freeze = true` bilan turgan
+`FREEZE_MODE_KINEMATIC` jismlar tizimga qo'shilganda fizika qadami
+sekinlashadi (kenglik fazasini qayta qurish).
+
+**Keyingi qadam:** AI mashinalarini `RigidBody3D` dan chiqarib,
+oddiy `Node3D` qilish — harakatlanuvchi trafik fizika talab
+qilmaydi. Zarba uchun alohida `StaticBody3D`.
+
+**Vaqtinchalik:** `XORAZM_TRAFIX=0` bilan trafikni o'chirish mumkin.
+
+### Boshqalar
+
 **Ko'cha harakati:** 34 ta harakatlanuvchi mashina (magistral,
 shahar ko'chasi, qishloq yo'llari) + 41 ta qo'yilgan mashina
 (Tandirchi ko'chalari va Urganch ko'chasi). O'ngdan chapga, yo'ldan

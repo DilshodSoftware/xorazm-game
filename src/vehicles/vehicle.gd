@@ -217,7 +217,13 @@ func _build_body() -> void:
 	if builder.is_empty():
 		push_error("Mashina kuzovi bo'sh qoldi: %s" % model_key)
 		return
-	builder.commit(self, "Kuzov", 0.38, true, true)
+	# DIQQAT: soya faqat O'YINCHI mashinasida. AI va qo'yilgan
+	# mashinalar soyasiz: ko'chada 35 ta harakatlanuvchi + 41 ta
+	# qo'yilgan mashina bo'lganda, ularning hammasi soya xaritasiga
+	# tushib, har biriga ~4000 uchburchak qo'shardi — FPS 60 dan
+	# 1 gacha tushdi (40 kadr: 0,7 s dan 40 s ga). Past quyosh
+	# soyasi uzoqda ham deyarli ko'rinmaydi.
+	builder.commit(self, "Kuzov", 0.38, physics_driven, true)
 
 
 ## Zarba shakli.
@@ -543,16 +549,28 @@ func is_airborne() -> bool:
 
 
 ## Ko'rinadigan g'ildoraklarni buradi va aylantiradi.
+##
+## DIQQAT: aylanish `rotate_object_local` bilan JAMLANIB emas,
+## to'g'ridan-to'g'ri rotatsiya bilan qo'yiladi.
+##
+## Sababi o'lchovda topildi: `rotate_object_local` har chaqiruvda
+## matritsani ko'paytiradi va tugunga "transform o'zgardi" deb
+## xabar beradi — bu esa meshning chegarasini (AABB) bekor qiladi.
+## 35 ta mashina × 4 g'ildorak = 140 ta tugun, har kadrda →
+## FPS 60 dan ~1 ga tushdi (40 kadr 0,7 s dan 40 s ga).
+##
+## Bundan tashqari burchak `TAU` ga qisqartiriladi — aks holda
+## sonlar son bo'lib, aniqlikni yo'qotadi va meshning chegarasi
+## yana kengayadi.
 func _update_visuals(delta: float) -> void:
 	var radius: float = maxf(float(spec["radius"]), 0.1)
 	_wheel_spin += (linear_velocity.length() / radius) * delta
+	var spin: float = fposmod(-_wheel_spin, TAU)
 	for i in _wheel_visual.size():
 		var node: MeshInstance3D = _wheel_visual[i]
-		var front: bool = i < 2
-		node.rotation.y = steer_now if front else 0.0
-		# Aylanish silindrning o'qiga (X) bo'ylab
-		node.rotation.z = 0.0
-		node.rotate_object_local(Vector3.RIGHT, -_wheel_spin)
+		# Oldingi g'ildorak buriladi; rotatsiya tartibi YXZ, ya'ni
+		# avval burish, keyin aylanish — to'g'ri tartib
+		node.rotation = Vector3(spin, steer_now if i < 2 else 0.0, 0.0)
 
 
 func _process(delta: float) -> void:

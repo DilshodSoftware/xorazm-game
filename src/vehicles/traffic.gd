@@ -42,6 +42,30 @@ const SPEED_STREET := 34.0
 const SPEED_HIGHWAY := 74.0
 const SPEED_DIRT := 44.0
 
+## O'LCHOV: bu tizim HAZIR VAQTDA SEKIN
+##
+## O'lchov (40 kadr, 1280x720, Intel UHD ICL GT1):
+##   trafiksiz                 9,5 s   (4-bosqich darajasida ~0,7 s edi)
+##   1 ta ham harakatlanuvchi  40,0 s
+## Son emas — mexanizm: 5 ta va 35 ta bir xil natija beradi.
+## Chiqarilgan gumonlar (barchasi o'lchov bilan rad etildi):
+##   * soya (cast_shadow)  — o'chirildi, o'zgarmadi
+##   * mashina mesh'lari   — yashirildi, o'zgarmadi
+##   * zarba shakli        — o'chirildi, o'zgarmadi
+##   * har kadrda joyini
+##     yangilash (place_on_road) — o'chirildi, o'zgarmadi
+##   * g'ildorak aylanishi (rotate_object_local → to'g'ri rotatsiya)
+## G'ol qolgan muqobil: `RigidBody3D` jismlari (`freeze = true`)
+## tizimga qo'shilganda fizika qadami sekinlashadi — ehtimol
+## `FREEZE_MODE_KINEMATIC` har kadrda kenglik fazasini
+## qayta qurayotganidir.
+##
+## KEYINGI QADAM: AI mashinalarini `RigidBody3D` dan chiqarib,
+## oddiy `Node3D` (harakatlanuvchi trafik fizika talab qilmaydi)
+## qilish. Zarba uchun alohida `StaticBody3D`.
+##
+## VAQTINCHA: `XORAZM_TRAFIX=0` bilan trafikni o'chirish mumkin.
+##
 ## Yuklash va yuklashdan chiqarish masofasi, m.
 const SPAWN_RADIUS := 230.0
 const DESPAWN_RADIUS := 300.0
@@ -64,6 +88,11 @@ func _ready() -> void:
 ## O'yinchiga bog'lanadi. Har kadrda o'z atrofiga mashinalar
 ## qo'shiladi va uzoqlashganlari olib tashlanadi.
 func follow(who: Node3D) -> void:
+	if OS.get_environment("XORAZM_TRAFIX") == "0":
+		# O'LCHOV sababi bilan o'chirilgan (yuqoroga qarang)
+		set_physics_process(false)
+		set_process(false)
+		return
 	_target = who
 	spawn_parked()
 
@@ -81,9 +110,15 @@ func force_refresh() -> void:
 	_manage_travelling(here, 0.0)
 
 
+var _sayac := 0
+
 func _process(delta: float) -> void:
 	if _target == null:
 		return
+	_sayac += 1
+	if _sayac == 30 or _sayac == 300:
+		print_rich("  [color=#a89d8a]TRAFIK: harakatlanuvchi %d, qo'yilgan %d[/color]" % [
+			cars.size(), parked.size()])
 	var here: Vector2 = Vector2(_target.global_position.x, _target.global_position.z)
 	_manage_travelling(here, delta)
 	_manage_parked(here)
@@ -134,6 +169,7 @@ func _manage_travelling(here: Vector2, delta: float) -> void:
 				gap = GAP_DIRT
 		var need: int = int(clampf(RoadNetwork.road_length(index) / gap,
 			1.0, 7.0))
+
 		for attempt in gap:
 			if slots.size() >= need:
 				break

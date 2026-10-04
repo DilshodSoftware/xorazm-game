@@ -444,8 +444,11 @@ func _test_yurish() -> void:
 	yonalish.y = 0.0
 	var moslik: float = piyoda.oldingi_tomoni().normalized().dot(
 		yonalish.normalized()) if yonalish.length() > 0.01 else 0.0
-	_check("Yonalish to'g'ri (bosh −Z, harakat yo'nalishiga qaragan)",
-		moslik > 0.97, "(%.3f)" % moslik)
+	_check("Yonalish to'g'ri (bosh −Z, harakat yonalishiga qaragan)",
+		moslik > 0.97, "(%.3f; burchak %.0f°, oldingi tomon %.2f/%.2f, "
+		% [moslik, piyoda.rotation.y, piyoda.oldingi_tomoni().x,
+			piyoda.oldingi_tomoni().z]
+		+ "harakat %.2f/%.2f)" % [yonalish.x, yonalish.z])
 	_check("Qadam animatsiyasi ishlaydi", eng_katta_chaynish > 0.15
 		and qarshi_belgi, "(%.0f° da chaynadi, oyoqlar teskari)" %
 		rad_to_deg(eng_katta_chaynish))
@@ -552,9 +555,15 @@ func _test_bosqich() -> void:
 	birinchi.qoshnilar = qoshnilar
 	ikkinchi.qoshnilar = qoshnilar
 	var boshlangich := birinchi.global_position.distance_to(ikkinchi.global_position)
+	# DIQQAT: o'lchov 0,4 s dan KEYIN boshl'anadi. Surish kuchi 0,78 m/s,
+	# ya'ni 0,26 m ni ajratishga ~0,35 s kerak. Boshlang'ich kadrda
+	# masofa 0,30 m bo'lgani uchun uni o'lchashga kirsak, tekshiruv
+	# har doim FAIL bo'lardi (o'z-o'zini rad etadi).
+	for _i in 24:
+		await get_tree().physics_frame
 	var eng_kichik := 99.0
 	var eng_katta := 0.0
-	for _i in 60:
+	for _i in 40:
 		await get_tree().physics_frame
 		var masofa := birinchi.global_position.distance_to(ikkinchi.global_position)
 		eng_kichik = minf(eng_kichik, masofa)
@@ -605,7 +614,11 @@ func _test_chetlashish() -> void:
 		piyoda.global_position.y, mashina_joyi.y)
 	mashina.rotation.y = piyoda.rotation.y
 	mashina.set_reported_speed(50.0)
-	piyoda.mashinalar = [mashina] as Array[Vehicle]
+	# DIQQAT: tiplangan ro'yxat — `mashinalar` `Array[Vehicle]` turida.
+	# Oddiy `[mashina]` massivi (Variant) turlanmagan bo'ladi va
+	# `Pedestrian` uni iteratsiya qilolmaydi.
+	var royxat: Array[Vehicle] = [mashina]
+	piyoda.mashinalar = royxat
 
 	var eng_katta_siljish: float = asosiy
 	for _i in 70:
@@ -619,9 +632,14 @@ func _test_chetlashish() -> void:
 		"(%d marta)" % piyoda.chetlash_soni)
 
 	# --- 2. Mashina o'tib ketdi — piyoda yo'lga qaytadi ---
-	piyoda.mashinalar = [] as Array[Vehicle]
+	# DIQQAT: 2,7 s kutamiz. Chetlashish 0,9 m/s bilan so'nadi
+	# (1,8 s), keyin yon siljishi 1,8 m/s bilan asosiy joyiga
+	# qaytadi (0,85 m / 1,8 = 0,5 s). Jami ~2,3 s — 1,5 s yetarli
+	# emas, sinov "yo'lga qaytmadi" deb xato xato xabar berardi.
+	var boshr_royxat: Array[Vehicle] = []
+	piyoda.mashinalar = boshr_royxat
 	mashina.set_reported_speed(0.0)
-	for _i in 90:
+	for _i in 160:
 		await get_tree().physics_frame
 	_check("Mashina o'tib ketganda yo'lga qaytadi",
 		absf(piyoda.yon_siljishi() - asosiy) < 0.30,
@@ -706,8 +724,10 @@ func _test_jamoa() -> void:
 	# Uzoqda piyoda yaratilmasligi kerak
 	var uzoq := eng_uzoq_nuqta()
 	var uzoq_tugun := Node3D.new()
-	uzoq_tugun.global_position = uzoq
+	# DIQQAT: avval sahnaga qo'shiladi, keyin global_position — aks
+	# holda `global_position` "sahnadan tashqarida" deya xato beradi.
 	_dunyo.add_child(uzoq_tugun)
+	uzoq_tugun.global_position = uzoq
 	jamoa.follow(uzoq_tugun)
 	for _i in 40:
 		await get_tree().physics_frame

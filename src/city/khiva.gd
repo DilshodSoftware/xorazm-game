@@ -81,6 +81,14 @@ const ARK_DEVOR_BALANDLIGI := 2.6
 ## (1 m) shaharni "bir butun massa" qilib ko'rsatadi.
 const TESHIK := 3.2
 
+## Qadam qo'shimchasi — TESHIK ustiga.
+## NIMA UCHUN: qator uylari orasidagi bo'sh joy `TESHIK` ga teng
+## bo'lsa, SAT tekshiruvi chegara holatida bo'ladi va suzish xatosi
+## tufayli uy "tushiriladi" (birinchi urinishda shunday bo'ldi:
+## qatorning o'z uylari bir-birini rad etayotgan edi). 0,4 m zaxira
+## bu chegaradan chiqishga yo'l ochadi.
+const QADAM_XALFA := 0.4
+
 ## Ko'cha chetidan uyning old devorigacha (trotyuar).
 ## NIMA UCHUN 1,5 m: Xiva ko'chalarida devorlar ko'chaga DEB
 ## tegib turmaydi — devor orasida 1–2 m li ariqcha (bordjura) bor.
@@ -601,15 +609,17 @@ static func _build_houses() -> void:
 	# --- Devorga yopishgan qatorlar (ko'cha yo'q — devor "ko'cha") ---
 	# NIMA UCHUN chiziq bo'yicha: devor to'g'ri chiziq emas, lekin
 	# uning ichki chekkasidan 1,5 m ichkarida qator qo'yish mumkin.
+	# NIMA UCHUN ikki bo'lak: Al-Xorazm ko'chasi (x ≈ 8) devor
+	# qatorini kesadi — kesishma oldida uy qo'yib bo'lmaydi.
 	_qator("Devor qatori — shimol", c,
 		[Vector2(-176.0, -146.0), Vector2(176.0, -146.0)], -1.0,
-		TROTUAR, 14.0, 12.0, 9, 2, 2)
+		TROTUAR, 14.0, 12.0, 6, 2, 2, 6.0, 176.0)
 	_qator("Devor qatori — janub", c,
 		[Vector2(-176.0, 146.0), Vector2(176.0, 146.0)], 1.0,
-		TROTUAR, 14.0, 12.0, 9, 2, 2)
+		TROTUAR, 14.0, 12.0, 6, 2, 2, 8.0, 176.0)
 	_qator("Devor qatori — sharq", c,
-		[Vector2(195.0, -92.0), Vector2(195.0, 92.0)], -1.0,
-		TROTUAR, 13.0, 12.0, 8, 2, 2)
+		[Vector2(197.0, -92.0), Vector2(197.0, 92.0)], -1.0,
+		TROTUAR, 13.0, 12.0, 4, 2, 2, 4.0, 88.0)
 
 	# --- Ichki ariqchalar (kvartal ichida, ko'chasi yo'q) ---
 	# NIMA UCHUN `chora = 0`: bular haqiqiy ko'chalar emas, kvartal
@@ -646,7 +656,7 @@ static func _qator_kocha(nomi: String, kocha: int, yon: float,
 	# ko'cha o'qidan kamida 4 m masofada bo'lishi SHART. Tor ko'chada
 	# (4,6 m) oddiy hisob 2,3 + 1,5 = 3,8 m chiqib ketardi.
 	var chora: float = maxf(float(street["kenglik"]) * 0.5, 4.0) + TROTUAR
-	var qadam := en + TESHIK
+	var qadam := en + TESHIK + QADAM_XALFA
 	var u := bosh_u + en * 0.5
 
 	while u <= tugash_u:
@@ -684,9 +694,12 @@ static func _nuqta_va_yonalish(poly: PackedVector2Array,
 ## [param chiziq]  — qatorning o'qi (mahalliy koordinat, 2 nuqta)
 ## [param yon]     — +1 = chiziqning chap yoni, −1 = o'ng yoni
 ## [param chora]   — chiziqdan uy old devorigacha masofa
+## [param bosh_u]  — qator qayerdan boshlanadi (chiziq bo'ylab, m)
+## [param tugash_u]— qator qayerda tugaydi
 static func _qator(nomi: String, c: Vector2, chiziq: Array, yon: float,
 		chora: float, en: float, chuqur: float, soni: int,
-		qavat_min: int, qavat_max: int) -> void:
+		qavat_min: int, qavat_max: int, bosh_u: float = -INF,
+		tugash_u: float = INF) -> void:
 	var a: Vector2 = chiziq[0]
 	var b: Vector2 = chiziq[1]
 	var uzunlik: float = a.distance_to(b)
@@ -696,12 +709,18 @@ static func _qator(nomi: String, c: Vector2, chiziq: Array, yon: float,
 	# NIMA UCHUN `orthogonal`: u yo'nalishga 90° berilgan vektor.
 	# +1 yon uchun qator chiziqning chap tomonida, −1 uchun o'ngda.
 	var yon_vec := yonalish.orthogonal() * yon
-	var qadam := en + TESHIK
-	var toliq: float = qadam * float(soni) - TESHIK
-	var bosh_u: float = (uzunlik - toliq) * 0.5
+	var qadam := en + TESHIK + QADAM_XALFA
+	var boshlash: float = maxf(bosh_u, en * 0.5)
+	var tugash: float = minf(tugash_u, uzunlik - en * 0.5)
+	if tugash - boshlash < en:
+		return
+	var egilgan: float = qadam * float(soni) - QADAM_XALFA
+	var bosh: float = boshlash + maxf(tugash - boshlash - egilgan, 0.0) * 0.5
 
 	for i in soni:
-		var u: float = bosh_u + qadam * float(i) + en * 0.5
+		var u: float = bosh + qadam * float(i) + en * 0.5
+		if u > tugash:
+			break
 		var nuqta: Vector2 = c + a + yonalish * u
 		var markaz: Vector2 = nuqta + yon_vec * (chora + chuqur * 0.5)
 		# Uy ko'chaga QARAYDI — peshoni (chora) tomon.
@@ -775,9 +794,22 @@ static func _joy_bosh(markaz: Vector2, yaw: float, en: float, chuqur: float,
 	return true
 
 
-## VAQTINCHALIK DIAGNOSTIKA: oxirgi rad etilgan joy va sababi.
+## DIAGNOSTIKA: oxirgi rad etilgan joyning sababi va qatorlar
+## kesimidagi rad etilganlar soni.
+##
+## NIMA UCHUN kerak: joylash qoidasi "tekshir, teghilsa tushir"
+## usulida ishlaydi, ya'ni kodni o'zgartirganda qator SEKIN bo'lib
+## qolishi mumkin va sababni faqat shu hisobdan ko'rish mumkin.
+## (Birinchi urinishda 100 ta so'ralgan joydan 42 tasi qolgan edi va
+## sabab — ko'chaning egilishi — faqat shu ro'yxatda ko'rindi.)
 static var _oxirgi_sabab := ""
 static var _radetildi: Dictionary = {}
+
+
+## Rad etilgan joylar: {"qator nomi | sabab": soni}.
+static func rejected() -> Dictionary:
+	_ensure()
+	return _radetildi
 
 
 ## Uyning to'rt burchagi (world XZ). `yaw` = ko'chaga qaragan yo'nalish.

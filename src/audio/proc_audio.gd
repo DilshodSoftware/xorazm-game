@@ -79,26 +79,34 @@ static func pink(phase: float) -> float:
 ##
 ## Daraxtli motor to'plamlarida chiqadigan "ha" ovozi shaklanishda:
 ## silindrlar bir vaqtda portlab chiqqanda havodagi to'lqin
-## qaytib keladi va rezonans hosil qiladi. Bu oddiy formulada
-## bitta tebranish qiymati qaytarib beriladi, aniq fizika emas —
-## lekin eshitiladigan ta'sir bor.
+## qaytib keladi va rezonans hosil qiladi.
+##
+## DIQQAT: BELGI MUHIM. To'g'ri shakl
+##     y[n] = x[n] − ( 2·r·cos(w)·y[n−1] − r²·y[n−2] )
+## `r²` atamasini qo'shish emas, **ayirish** kerak. Xato bilan
+## qutular barqaror emas bo'lib qoladi va signal `inf` ga uchraydi
+## (sinovda 18 namundan keyin ko'rildi).
 class Resonator:
 	var _y1 := 0.0
 	var _y2 := 0.0
+	## 2·r·cos(w)
 	var a := 0.0
+	## r²
 	var b := 0.0
 
 	func set_freq(freq: float, damping: float) -> void:
 		var w: float = TAU * clampf(freq, 20.0, MIX_RATE * 0.45) / MIX_RATE
 		var r: float = clampf(1.0 - damping, 0.0, 0.999)
 		a = 2.0 * r * cos(w)
-		b = -(r * r)
+		b = r * r
 
 	func step(x: float) -> float:
-		var y: float = x - _y1 * 0.0 + b * _y2
+		var y: float = x - (a * _y1 - b * _y2)
 		_y2 = _y1
 		_y1 = y
-		return y
+		# Xavfsizlik: rezonans kuchaytiruvchi, o'zi cheksiz
+		# o'sishi mumkin. Chegilanmasa butun signal buziladi.
+		return clampf(y, -8.0, 8.0)
 
 	func reset() -> void:
 		_y1 = 0.0

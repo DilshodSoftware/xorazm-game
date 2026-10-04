@@ -333,6 +333,232 @@ o'zgartirmoq uchun `hud.samar` kalitini tahrirlang. Kodga tegilmaydi.
 
 ## 5-bosqich: mashinalar — holat
 
+### 🔊 Daraxtli ovoz (hech qanday audio fayl yo'q)
+
+Yangi modul `src/audio/`. Barcha tovushlar kod bilan generatsiya
+qilinadi — sabab ikkitadb: (1) sampler bilan o'zgaruvchan chastota
+(oborot) umuman chiqmaydi, faqat «saltang» ovoz bo'ladi; (2) 5 ta
+model × 6 ta tovush × 0,7 MB = 21 MB fayl kerak bo'lardi.
+
+| Nima | Qanday |
+|---|---|
+| **Motor ovozi** | `AudioStreamGenerator`, 22 050 Hz. To'rt yurakli dvigatelning portlash chastotasi `rpm/60 × 2` — shu chastota va uning 1…4-garmonikalari, ustiga yorliq shovqin, silindr bloki rezonansi va shina shovkini. Chastota gaz va tezlikka javob beradi |
+| **Qo'ng'iroq** | 620 Hz kvart (≈587 Hz o'lchovda), past quvva, sekin so'nadi |
+| **Zarba** | Yorliq shovqin + 110 Hz korpus rezonansi, eksponensial so'nish |
+
+O'lchov (`--test-audio`, 18 ta tekshiruv):
+
+| Holat | RMS | Cho'qti |
+|---|---|---|
+| Bekor qo'yish (850 rpm) | 0,080 | 0,160 |
+| To'liq gaz, 100 km/soat | 0,195 | 0,307 |
+| Qo'ng'iroq | 0,275 | 0,677 |
+
+**Uchta xato sinovda ushlandi** — barchasi jimgina buzilish edi
+(hech qanday xato xabari bermaydi):
+
+1. **Rezonansda belgi xatosi.** To'g'ri shakl
+   `y[n] = x[n] − (2r·cos(w)·y[n-1] − r²·y[n-2])` — `r²` ni
+   **qo'shish** emas, **ayirish** kerak. Xato bilan qutular
+   `|λ| = 2,39` bo'lib qoladi (barqarorlik chegarasi 1), ya'ni
+   signal har **18 namundada** `inf` ga yetib, butun motor ovozi
+   `NaN` ga aylanardi.
+2. **Zarf vaqtga emas, namuna soniga bog'langan** edi (`*= 0,994`).
+   Tez mashinada portlashlar orasidagi vaqt qisqaradi — shuning
+   uchun ovoz tezligi oshgani bilan **jimroq** bo'lib chiqardi,
+   ya'ni teskari fizika. Endi vaqt doimiysi `FIRE_TAU = 18 ms`.
+3. **`PackedByteArray[i]` belgilangan `int8` qaytaradi** — yuqori
+   baytni `& 0xFF` bilan ajratish kerak. Aks holda signalga doimiy
+   tok qo'shiladi va «tovush so'nmaydi» ko'rinishida xato beradi.
+
+### Xorazm relyefi
+
+Bitta manba bor: `TerrainGen.height_at(x, z)`. Dunyo, jamoa, paxta
+maydonlari, daraxtlar va keyinchalik yo'llar hammasidan shu funksiya
+o'qiydi — shuning uchun hech qayerda "ikkita xil balandlik" bo'lmaydi.
+
+| | |
+|---|---|
+| Orol | 5,8 × 5,2 km (kvadratga yaqin, shaharlar to'g'ri sig'sin) |
+| Chunk | 400 m · radius 2 (doira) = 21 ta · 1 kadr/kadr |
+| Balandlik diapazoni | **−9 … +10 m** — Xorazm hech qachon tog'li emas |
+| Shahar tepaligi | +6,00 m, radius 340 m bilan yumshoq o'tadi |
+| Amudaryo | janubda, ~2140 m da, tubi −9 m |
+| Sho'r ko'llar | 4 ta (janub), tubi −1,3 m |
+| Kanallar | 4 ta (Shavat, Yermish, Polvon, Qilichniyozboy), 14 m keng |
+| G'ovuk ko'l | Xivada, Ø 150 m |
+| Qum tepaliklari | g'arb va janub-g'arb, 7,5 m |
+
+**Tartib muhim:** mayin → chekadan cho'kish → shahar tepaligi → suv o'yilishi.
+Oxirgi ikkitasi almashsa, shahar suv ostida qoladi yoki ko'l tepalik bilan
+to'ladi (ikkalasi ham bo'lgan edi).
+
+### O'yinchi parametrli
+
+| | |
+|---|---|
+| Ko'z balandligi | 1,66 m (egilganda 1,05 m) |
+| Tezliklar | yurish 5,1 · yugurish 7,6 · egilgan 1,45 m/s |
+| Sakrash | 1,0 m (tugma tez bo'shatilsa 0,58 m) |
+| Og'irlik | 19,6 m/s² (haqiqiy 9,8 — o'yin hissi uchun ikki barobar) |
+| Kuch | yugurishda 13/s, 0,9 s kutgandan keyin tiklanadi |
+
+### Tandirchi mahallasi
+
+Xorazmning eski mahallasi: ko'chalar **panjara emas, egilgan** va
+tor. Panjara faqat 1920–1950 yillarda sho'llik shaharlarda
+qo'llangan; Tandirchi o'sha davrdan oldin qurilgan.
+
+Xorazm uyining to'rt qoidasi shu yerda bajarilgan:
+
+1. **Ko'chaga qaragan devor tekis va baland** (2,45 m), derazasiz —
+   shahar ichida begona uyni ko'rishdan himoya va yozda salqin
+2. **Eshik chuqurda** — peshenta (taborxona) orqali, devorning yonida
+3. **Derazalar faqat hovliga qaraydi**, ko'chaga emas
+4. **Tom tekis**, shift ostida yog'och taronalar ko'rinadi
+
+| | |
+|---|---|
+| Ko'chalar | 8 ta — bitta asosiy (Kosiblar), 3 ta parallel mavze, 4 ta kesma |
+| Uy joylari | 85 ta (250 × 200 m maydonda) |
+| Uy | 9,5–14,5 m frontal · 11,5–15,5 m chuqur · 1–2 qavat |
+| Ko'chalar orasidagi masofa | 44 m (kamroq bo'lsa uylar ustma-ust tushadi) |
+| Devor poydevori (sokva) | 55 cm — ko'k-yashil yoki to'q, namdan himoya |
+| Daraxtlar | anor, nonak, sharak, qarag'ay, terak |
+
+Bino o'lchamlari **hech qachon kichiklashtirilmaydi** — Xorazm xalq
+uyi 10 × 15 m haqiqiy. Faqat shaharlar *orasidagi* masofa 1:20.
+
+**O'yinchi uyi** alohida quriladi: ichida peshenta → hovli → katta
+xona, oshxona va yotqona, an'anaviy mebellar (to'ragan, samovar,
+g'ilam, mayda, o'choq, karavot), elektr chiroq va ochiladigan eshik
+(E tugmasi).
+
+### Yo'l tarmog'i
+
+Xorazmda halqa yo'l **yo'q**. Lekin Amudaryo qirg'og'ida sel-suv
+himoya dambalari aynan orol atrofida qurilgan va yo'llar shu damlar
+ustida yuradi. Shu sababli bizning "halqa" — qirg'oqga moslangan
+damlar yo'li.
+
+| | |
+|---|---|
+| Tashqi halqa | ~48 km, **quruq yer tugagacha** har burchakda o'lchanadi |
+| Radial | 6 ta, Urganchdan, haqiqiy shaharlar yo'nalishiga qarab |
+| Shahar to'ri | Urganch — 150 × 130 m kvartal, doiraga sig'dirilgan |
+| Qishloq yo'llari | 8 ta, g'ishtli (qum rangli, chiziqsiz) |
+| Magistr | 14 m (4 tasma) · ko'cha 8 m (2 tasma) · qishloq 5 m |
+| Ko'prik | kanal kesishgan **har** joyda avtomatik (hozir 5 ta) |
+
+**Nima uchun halqa sun'iy ellipsa emas:** doimiy radiusli halqa janubda
+Amudaryoning ichiga tushib, ko'priksiz qismda suv ustida qolardi.
+Radiuslar endi har 2,5° da quruq yerni tekshirib, undan 220 m ichkarida
+o'tadi — xuddi haqiqiy damba qilgandek.
+
+**Nima uchun yer tekislanadi:** `TerrainGen.height_at` yo'llar ostidagi
+yeri tekislaydi, shuning uchun mashina kengaytirilgan yerning o'zi
+ustida haydaydi — alohida collision kerak emas va uzluksiz ishlaydi.
+
+Profil uch qadam bilan barqarorlashtiriladi: oyna bilan yumshtash
+(±200 m, 3 marta), **gradient cheklovi 1:40** va kesishmalarda
+profillarni o'rtalash. Cheklov muhim: Xorazm — dunyodagi eng tekis
+viloyatlardan biri, 2,5% dan tik yo'l bu yerda tabiiy emas.
+
+```
+project.godot      # loyiha sozlamalari, autoload'lar, fizika qatlamlari
+data/locale/uz.json # barcha o'yin matnlari
+
+src/core/          # game, event_bus, locale, palette, settings,
+                   # save_system, game_state, input_setup
+src/world/         # terrain_gen.gd     — BALANDLIKNING YAGONA MANBA
+                   # world_map.gd       — Xorazmning haqiqiy koordinatalari
+                   # world_chunk.gd     — 400 m bo'lak: mesh + collision
+                   # chunk_manager.gd   — streaming
+                   # water_surface.gd   — Amudaryo, kanallar, ko'llar
+                   # khorezm_morning.gd — ertalab yorug'ligi
+                   # physics_layers.gd  — qatlamlar
+                   # debug_props.gd     (vaqtinchalik, 4-bosqichda o'chadi)
+src/world/roads/   # road_network.gd   — YO'L TARMOG'I: geometriya, tekislash
+                   # road_builder.gd    — ko'rinadigan yo'l, chiziq, ko'prik
+src/buildings/     # building_kit.gd   — Xorazm uyining qismlari (eshik, to'sh,
+                   #                      tarona, shift, ravoq, darvoza)
+                   # courtyard_house.gd — bitta hovli uy
+                   # tandirchi.gd       — KO'CHALAR VA UY JOYLARI (ma'lumot)
+                   # building_manager.gd— binolarni chunk'lar bo'yicha yuklash
+                   # furniture_kit.gd   — to'ragan, samovar, o'choq, karavot...
+                   # player_house.gd    — o'yinchi uyi: ichi, chiroq, eshiklar
+                   # house_door.gd      — ochiladigan eshik
+src/world/tree_kit.gd  — anor, nonak, qarag'ay, sharak, terak
+src/world/interactable.gd — "E" bilan ochiladigan narsalar
+src/player/        # player.gd, camera_rig.gd
+src/main.gd        # o'yin ildizi
+scenes/            # main.tscn, player/player.tscn
+tools/             # player_selftest.gd — 27 ta test
+                   # terrain_selftest.gd — 45 ta test
+                   # road_selftest.gd   — 15 ta test
+                   # building_selftest.gd — 24 ta test
+                   # terrain_map.gd     — rasm xaritasi chizuvchisi
+```
+
+## Tekshiruv
+
+Har bir bosqichda avtomatik tekshiruv ishlaydi:
+
+```bash
+~/Applications/godot --headless --path . -- --test           # o'yinchi (27)
+~/Applications/godot --headless --path . -- --test-terrain   # relyef (45)
+~/Applications/godot --headless --path . -- --test-roads     # yo'llar (15)
+~/Applications/godot --headless --path . -- --test-buildings # Tandirchi (24)
+~/Applications/godot --path . -- --bench                    # FPS (maqsad 60)
+```
+
+Har uchasi ham chiqish kodi bilan tugaydi: `0` = hammasi o'tdi, `1` = xato bor.
+
+**Bu nima uchun muhim.** GDScript'da `await` ichidagi runtime xatosi
+**yutilib ketadi**: funksiya o'sha joyda to'xtaydi, lekin uni chaqirgan
+funksiya davom etib yakuniy "0 xato" hisobotini chiqaradi. 4-bosqichda
+shuning tufayli uchta eshik tekshiruvi butunlay bajarilmay qoldi va
+hech kim bilmadi. Endi `EXPECTED_CHECKS` — bajarilgan tekshiruvlar
+soni shartli tekshiriladi: kam bo'lsa, test o'zi "bajarilmagan
+tekshiruv bor" deb xato beradi.
+
+**Va bu darhol o'z natijasini berdi** — eshik "ochiq" deb hisoblanardi,
+lekin hech qachon burilmagan edi: burchak har kadrda `delta² × 60`
+bo'yicha qo'shilardi. Tezlik 3,4°/soniya edi (78° uchun 23 soniya).
+
+**Yana bir bor o'lcham** 4-bosqichda tekshiruv ikki jiddiy xatoni
+topdi: (1) joylashuv tekshiruvi sikl ichida `return` qilgani uchun
+faqat birinchi o'q tekshirilardi — 111 uydan 275 juftlik ustma-ust
+tushgan edi; (2) bino yordamchilarida `origin.y` ga yana `ground`
+qo'shilardi, shuning uchun barcha mebel va chiroq shift ustida
+turgan edi. Ikkalasi ham ko'rishda sezilmaydi — faqat soniq ushladi.
+
+2-bosqichda esa shunday xato topildi:
+topdi: chunk ostida bir necha kadrga teshik qolardi va o'yinchi havoga
+tushib ketardi. Chunklar soni va renderlash statistikasi **normal**
+ko'rinardi — faqat skrinshotga qarab sezildi.
+
+3-bosqichda esa **fazolaviy to'r** xatosi shunday yashiringan edi:
+diagonal yo'l kesimi katak chegarasini "sakrab" o'tib, o'sha katak
+belgilanmagan qolardi. Natija: yo'lning markazi tekislangan, 4 m
+yonidagi nuqta esa qo'lda qolgan — mashina yo'lda mayraydi, ko'prik
+kerak joylar topilmadi. Hech qanday vizual belgi yo'q edi. Shu bois
+`verify_index()` — har bir yo'l nuqtasi o'z katagida o'z yo'lini
+topishi tekshiriladi. Kelgisi bosqichlarda ham shu poydevor kerak.
+
+## O'zbek tilida o'zgartirish
+
+Barcha matnlar `data/locale/uz.json` da. Masalan HP yorlig'ining matnini
+o'zgartirmoq uchun `hud.samar` kalitini tahrirlang. Kodga tegilmaydi.
+
+`Lang.txt("hud.samar")` · `Lang.group("mashinalar")` · `Lang.missing()`
+
+> **Muhim:** tarjima metodi `tr` emas, `txt` — `Object.tr()` allaqachon
+> mavjud (Godot'ning o'z funksiyasi) va override qilinishi butun
+> loyihani buzadi.
+
+## 5-bosqich: mashinalar — holat
+
 ### Tayyor
 
 **Modellar (5 ta, hammasi 1:1 haqiqiy o'lchamda)**
@@ -474,7 +700,7 @@ hosil qilmagan edi: `apply_torque` bilan 49°, bir xil kuch bilan 0°.
 
 ### Tekshiruvlar
 
-167 ta test, hammasi `--test*` bayroqlari bilan (barchasi o'tadi):
+185 ta test, hammasi `--test*` bayroqlari bilan (barchasi o'tadi):
 
 | Fayl | Testlar | Nima tekshiradi |
 |---|---|---|
@@ -484,3 +710,4 @@ hosil qilmagan edi: `apply_torque` bilan 49°, bir xil kuch bilan 0°.
 | `tools/building_selftest.gd` | 24 | Tandirchi uylari, eshik |
 | `tools/mesh_selftest.gd` | 17 | geometriya yordamchilari |
 | `tools/vehicle_selftest.gd` | 39 | mashina + real haydash |
+| `src/audio/audio_selftest.gd` | 18 | daraxtli ovozlar |

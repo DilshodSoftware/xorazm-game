@@ -39,11 +39,14 @@ const OLIB_TASHLASH_RADIUSI := 125.0
 const KOP_CHEGARASI := 40
 
 ## Bir ko'chada 1 ta piyoda shu masofada (m) — zichlik.
-## 1,3 m/s tezlikda bu ~7 s da bitta odam; 235 m li Kosiblar
-## ko'chasida 8 ta piyoda (chegara bo'yicha) chiqadi — mahalla
-## haqiqiy zichligiga yaqin.
-const YOL_UCHUN_MASOFA := 20.0
-const YOLDA_CHEGARA := 8
+##
+## O'LCHOV: 1,3 m/s tezlikda 17 m — 13 s da bitta odam. Kosiblar
+## ko'chasi (252 m) shunda 10 ta piyoda oladi (chegara bo'yicha),
+## ya'ni mahallada har 20–25 metrda bitta odam. Bu mahalla uchun
+## mo'ljallangan zichlik: o'yinchi o'z ko'chasida yurganida har doim
+## bir necha odamni ko'radi.
+const YOL_UCHUN_MASOFA := 17.0
+const YOLDA_CHEGARA := 10
 
 ## Bir xil ko'chada ikki piyoda orasidagi eng kam masofa (m, yo'l
 ## bo'ylab). Piyodalar turli tomonda yurishi mumkin, shuning uchun bu
@@ -63,7 +66,12 @@ const KORINISH_CHEGARASI := 70.0
 const QAYTA_KORIB_CHIQISH := 0.5
 
 ## Ichki qidiruvda bir yo'l uchun urinishlar soni.
-const URINISH_SONI := 8
+##
+## NIMA UCHUN 14: tasodifiy `along` tanlanadi va uni 90 m radius ichida
+## bo'lishi SHART (o'yinchi shu vaqtda siljigan bo'lishi mumkin).
+## 252 m li ko'chada radiusga 1/3 qismi tushadi — 8 urinish yetarli
+## emas edi (o'lchov: shunda jamoa 30 ta piyodada to'xtaldi).
+const URINISH_SONI := 14
 
 ## Yo'l uzunligining minimal qiymati (m) — juda qisqa yo'lda piyoda
 ## kerak emas (u yerda oyoq urib ketadi).

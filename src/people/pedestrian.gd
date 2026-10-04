@@ -87,8 +87,11 @@ const YER_ORALIGI := 0.2
 ## Oldinda turgan odamni sezish (m): uning to'g'risida piyoda
 ## deyarli to'xtaydi, lekin uni bosib o'tmaydi.
 const QARSHI_ORALIQ := 0.75
-## Qo'shnini surish kuchi (m/s). Katta qiymat "telesportatsiya" beradi.
-const SURISH_KUCHI := 2.2
+## Qo'shnini surish kuchi (m/s) va surishning chegarasi (m).
+## Chegara kerak: aks holda uzoq vaqt yaqin turgan ikki piyoda
+## "ko'chadan chiqib" ketishi mumkin.
+const SURISH_KUCHI := 1.6
+const SURISH_CHEGARASI := 0.60
 
 # --------------------------------------------------------------- Ranglar
 ##
@@ -179,6 +182,8 @@ var boy := 1.70
 var jins := "erkak"
 ## Yurish tezligi (m/s) — bir marta tanlanadi, keyin o'zgarmaydi.
 var tezlik := 1.30
+## Tanlangan variantning nomi ("ko'k kurtkali erkak").
+var variant_nomi := ""
 ## Joriy holat (`Holat`).
 var holat: int = Holat.YURISH
 ## Soya berish. O'chirish uchun atrofga `XORAZM_SOYASIZ=1`.
@@ -244,6 +249,7 @@ var _oldinga := Vector2(0.0, -1.0)  ## yurish yo'nalishi (XZ)
 var _yon := Vector2(1.0, 0.0)        ## yo'lning o'ng tomoni (XZ)
 var _yon_joyi := 0.0                 ## joriy yon siljish (m, + = o'ng)
 var _yon_asosiyi := 1.8              ## asosiy yon siljish (kocha cheti)
+var _surish := Vector2.ZERO          ## qo'shnilardan qolgan qo'shimcha siljish
 var _tomon := 1.0                    ## +1 o'ng, −1 chap
 var _qadam := 0.0                    ## yurish fazasi (radian)
 var _chaynish := 0.0                 ## joriy oyoq chaynishi (rad)
@@ -498,6 +504,7 @@ static func create(root: Node3D, seed_value: int,
 ## Jadvaldagi variantni o'ziga xos qiladi (ranglar, balandlik, tezlik).
 func _variantni_qollash() -> void:
 	xususiyat = VARIANTS[variant]
+	variant_nomi = String(xususiyat["nom"])
 	jins = String(xususiyat["jins"])
 	boy = clampf(float(xususiyat["boy"]), BOY_MIN, BOY_MAX)
 	olchov = anatomia(boy, jins == "ayol")
@@ -545,15 +552,19 @@ func _tuzishni_qurish() -> void:
 	# --- Oyoqlar: oyoq tugunlari BEL DARAJASIDA, govzadan tashqarida.
 	# NIMA UCHUN: oyoq aylanishi bel o'qi atrofida bo'lishi kerak —
 	# shunda tana oldinga egilganda oyoq ham egiladi.
+	# DIQQAT: Y koordinati `bel` bo'lishi SHART. Oyoq mesh'i o'z o'qidan
+	# −bel gacha cho'ziladi (0 dan pastga); agar tugun yerga (Y=0)
+	# qo'yilsa, oyoq yerga botadi va piyoda beligacha "ko'miladi"
+	# (sinovda "model 2,74 m, oyoq yerga tegmaydi (−0,94 m)" chiqgan).
 	_oyoq_l = Node3D.new()
 	_oyoq_l.name = "OyoqChap"
-	_oyoq_l.position = Vector3(float(a["bel_yarim"]), 0.0, 0.0)
+	_oyoq_l.position = Vector3(float(a["bel_yarim"]), float(a["bel"]), 0.0)
 	add_child(_oyoq_l)
 	(qismlar["oyoq_l"] as MeshBuilder).commit(_oyoq_l, "OyoqChapMesh", 0.94, soya)
 
 	_oyoq_r = Node3D.new()
 	_oyoq_r.name = "OyoqOng"
-	_oyoq_r.position = Vector3(-float(a["bel_yarim"]), 0.0, 0.0)
+	_oyoq_r.position = Vector3(-float(a["bel_yarim"]), float(a["bel"]), 0.0)
 	add_child(_oyoq_r)
 	(qismlar["oyoq_r"] as MeshBuilder).commit(_oyoq_r, "OyoqOngMesh", 0.94, soya)
 
@@ -589,6 +600,7 @@ func start_on_road(index: int, along: float, side: float = 1.0) -> void:
 	# turgan bo'lardi.
 	_yarim = float(RoadNetwork.HALF_WIDTH[tur]) - 0.9
 	_yon_asosiyi = _tomon * _yarim * 0.78
+	_surish = Vector2.ZERO
 	_birinchi_qadam()
 
 
@@ -615,6 +627,7 @@ func start_on_street(index: int, along: float, side: float = 1.0) -> void:
 	kocha_nomi = String(kocha["nom"])
 	_yarim = float(kocha.get("kenglik", 6.0)) * 0.5 - 0.7
 	_yon_asosiyi = _tomon * _yarim * 0.78
+	_surish = Vector2.ZERO
 	_birinchi_qadam()
 
 
@@ -724,7 +737,14 @@ func _nuqtasini_topsh() -> void:
 		# alohida o'lchanadi (`_yerga_tekislash`).
 		var spot := RoadNetwork.point_along(yo_indeks, _along)
 		nuqta = spot["nuqta"]
-		yonalish = spot["yonalish"]
+		# DIQQAT: kalit "yo'nalish" — `RoadNetwork` da apostrof bilan
+		# yozilgan. Bu modulda kalit "yonalish" bo'lgani uchun
+		# (apostrof GDScript identifikatorida mumkin emas) yozish
+		# paytida apostrofni o'chirish kerak bo'lgan. Shuning uchun
+		# `RoadNetwork` kaliti o'zgartirilmaydi, balki bu yerda to'g'ri
+		# yoziladi. (Noto'g'ri yozilsa, `spot["yonalish"]` → null bo'ladi
+		# va piyoda yo'nalishini yo'qotadi — sinovda shunday bo'lgan.)
+		yonalish = spot["yo'nalish"]
 		if String(spot["yo'l"]) != "":
 			kocha_nomi = String(spot["yo'l"])
 	_oldinga = yonalish.normalized()
@@ -735,9 +755,10 @@ func _nuqtasini_topsh() -> void:
 	# (`direction.orthogonal()`), aks holda piyoda harakatlanuvchi
 	# mashinaga to'g'ri qarab yuradi.
 	_yon = _oldinga.orthogonal()
-	# Yonga siljish: kocha chetida yurish + chetlashish.
-	_pos.x = nuqta.x + _yon.x * _yon_joyi
-	_pos.z = nuqta.y + _yon.y * _yon_joyi
+	# Yonga siljish: kocha chetida yurish + chetlashish + qo'shnidan
+	# qolgan surish.
+	_pos.x = nuqta.x + _yon.x * _yon_joyi + _surish.x
+	_pos.z = nuqta.y + _yon.y * _yon_joyi + _surish.y
 
 
 ## Oddiy chiziq bo'ylab nuqta (Tandirchi ko'chalari uchun).
@@ -800,9 +821,16 @@ func _yonga_masofani_yuritish(delta: float) -> void:
 		_chetlash = maxf(_chetlash - delta * 0.9, 0.0)
 	_chetlash_kameral = maxf(_chetlash_kameral - delta, 0.0)
 
-	var chegara: float = maxf(_yarim - 0.30, 0.6)
-	var maqsad: float = clampf(_yon_asosiyi + _tomon * CHETLASH_CHEGARASI,
-		-chegara, chegara)
+	# Chetlashish faqat MAZIL bo'lganda qo'shiladi. Doimiy qo'shsak,
+	# piyoda doim ko'chaning eng chetida yuradi va ko'cha tor ko'rinadi.
+	#
+	# Chegara: ko'chaning HAQIQIY yarim enidan 0,30 m ichkarida.
+	# Nima uchun ichkarida: piyoda urish yoki devor ichiga kirmasin
+	# (Kosiblar ko'chasida yarim en 3,5 m, asosiy yo'l 2,18 m,
+	# chetlashishdan keyin 3,03 m — devordan 0,47 m qoladi).
+	var qoshimcha: float = _tomon * CHETLASH_CHEGARASI if _chetlash > 0.0 else 0.0
+	var chegara: float = maxf(_yarim + 0.7 - 0.30, 0.6)
+	var maqsad: float = clampf(_yon_asosiyi + qoshimcha, -chegara, chegara)
 	_yon_joyi = move_toward(_yon_joyi, maqsad, delta * 1.8)
 
 
@@ -835,10 +863,15 @@ func _yerga_tekislash(delta: float) -> void:
 ## DIQQAT: bu piyodalarni bir-biriga "urish" emas. Har biri faqat o'z
 ## joyini siljitadi va ikkalasi ham yarim yo'lni bosadi — shuning uchun
 ## hech qachon biri to'sib qolmaydi.
+##
+## NIMA UCHUN `_surish` alohida o'zgaruvchida saqlanadi
+## `_nuqtasini_topsh()` har kadrda nuqtani QAYTA hisoblaydi (yo'l
+## chizig'i + yon siljishi). Agar surishni to'g'ridan-to'g'ri `_pos` ga
+## yozsa, u keyingi kadrda yo'qolardi — piyodalar bir-biriga tegib
+## turgan holda qolardi (dastlabki yozimda aynan shunday xato bor edi:
+## sinov "32 sm dan yaqin bo'lmadi" deya FAIL bo'lgan).
 func _qoshnilarni_surish(delta: float) -> void:
-	if qoshnilar.is_empty():
-		return
-	var surish := Vector2.ZERO
+	var kuch := Vector2.ZERO
 	for qoshni in qoshnilar:
 		if qoshni == self or not is_instance_valid(qoshni):
 			continue
@@ -854,14 +887,19 @@ func _qoshnilarni_surish(delta: float) -> void:
 		if masofa < 0.001:
 			farq = Vector2(1.0, 0.0)
 			masofa = 0.001
-		surish -= (farq / masofa) * (QOSHNILAR_ORALIGI - masofa)
-	if surish.length_squared() < 0.000001:
+		kuch -= (farq / masofa) * (QOSHNILAR_ORALIGI - masofa)
+	if kuch.length_squared() < 0.000001:
+		# Qo'shni yo'qoldi — qadamning o'z joyiga QAYTISHI sekin
+		# (0,45 m/s): darhol qaytish tabiiy bo'lmaydi, odam bir zum
+		# turib qaraganidek bo'ladi.
+		_surish = _surish.move_toward(Vector2.ZERO, delta * 0.45)
 		return
-	var siljish: float = minf(SURISH_KUCHI, surish.length()) * delta
-	_pos += Vector3(surish.normalized().x, 0.0, surish.normalized().y) * siljish
-	# DIQQAT: surishdan keyin kocha chegarasi qayta tekshirilmaydi.
-	# Sabab: surish 0,56 m dan kichik, piyoda esa kocha chetidan
-	# 0,80 m masofada turadi — ya'ni surish uni ko'chadan chiqarmaydi.
+	# Kuch masofaga bog'liq, lekin javob tez: 0,26 m yaqinlikda
+	# 0,78 m/s — ya'ni 0,2 s da yelkalar ajratiladi.
+	var siljish: float = minf(kuch.length() * 3.0, SURISH_KUCHI) * delta
+	_surish += kuch.normalized() * siljish
+	if _surish.length() > SURISH_CHEGARASI:
+		_surish = _surish.normalized() * SURISH_CHEGARASI
 
 
 ## Harakat tugunlarini burish (yurish sikli).
@@ -918,17 +956,24 @@ func _qadamni_yuritish(delta: float) -> void:
 
 
 ## Yuzaga burilish — −Z yonalish qoidasi.
+##
+## DIQQAT: `rotation.y` GRADUSda, `atan2` RADIANda. Aralashib
+## yuborilsa, piyoda birinchi kadrda burchakni ~100 marta oshib
+## ketadi va keyingi 0,4 s davomida qaytarib oladi — ya'ni ko'chada
+## "sarsildoq" bo'lib buriladi (sinovda yo'nalish mosligi 0,95 chiqdi).
+## Shuning uchun `deg_to_rad` bilan ANIQ o'giriladi.
 func _nishonni_yuritish(delta: float) -> void:
+	var hozirgi := deg_to_rad(rotation.y)
 	var maqsad: float
 	if holat == Holat.CHETINGLASH:
 		# Devorga suyanda orqaga qaragan turadi, ya'ni ko'chaga yuzaladi.
 		# Devor ko'chaning ichki tomonida (`_yon * _tomon`).
 		var qarash := -_yon * _tomon
 		maqsad = atan2(-qarash.x, -qarash.y)
-		_burilishga(rotation.y, maqsad, delta, BURILISH_TEZLIGI * 0.5)
+		_burilishga(hozirgi, maqsad, delta, BURILISH_TEZLIGI * 0.5)
 		return
 	maqsad = atan2(-_oldinga.x, -_oldinga.y)
-	_burilishga(rotation.y, maqsad, delta, BURILISH_TEZLIGI)
+	_burilishga(hozirgi, maqsad, delta, BURILISH_TEZLIGI)
 
 
 ## [param burchak_rad] dan [param maqsad_rad] ga aylantiradi, tezlik
@@ -987,10 +1032,16 @@ func _mashina_telayotganmi(mashina: Vehicle) -> bool:
 	if farq.length() > TIRALIQ:
 		return false
 	# Mashining oldinga yo'nalishi (global, −Z qoidasi bo'yicha).
+	#
+	# DIQQAT: belgi o'zgarishi kerak. `farq` = mashina − piyoda.
+	# Piyoda mashinaning OLDIDAN bo'lsa, piyoda→mashina vektori
+	# mashina yo'nalishiga QARAMA-QARSHI bo'ladi, ya'ni
+	# `farq · yonalish < 0`. (Dastlabki yozimda `<= 0.0` edi —
+	# natijada hech qanday mashina sezilmadi va sinov FAIL bo'ldi.)
 	var burchak: float = mashina.global_rotation.y
 	var yonalish := Vector2(-sin(burchak), -cos(burchak))
-	if farq.dot(yonalish) <= 0.0:
-		return false   # mashina bizdan keyin
+	if farq.dot(yonalish) >= 0.0:
+		return false   # mashina bizdan keyin (biz uning orqasiz)
 	return absf(farq.dot(yonalish.orthogonal())) <= YOL_CHEGARASI
 
 
@@ -1173,6 +1224,15 @@ func tomon_belgisi() -> float:
 ## chetning bo'shligi (ko'chaning yarim enidan kamaytirilgan).
 func kocha_yarim_kengligi() -> float:
 	return _yarim + 0.7
+
+
+## Joriy yurish yonalishi (XZ, birim vektor) — diagnostika va sinov uchun.
+##
+## DIQQAT: bu KO'CHA yonalishi, tana burilish burchagi emas. Tana
+## burilishi cheklangan tezlikda unga yetadi, shuning uchun qisqa
+## vaqtda farq qilishi mumkin (ko'cha egilganda).
+func yonalishi() -> Vector2:
+	return _oldinga
 
 
 ## Nuqta joriy yo'lning chizig'idan qancha uzoqda (m) — sinov uchun.

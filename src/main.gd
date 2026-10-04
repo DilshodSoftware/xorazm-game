@@ -178,7 +178,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_enter_vehicle(player_vehicle)
 	elif event.is_action_pressed("horn") and driver != null \
 			and driver.vehicle != null:
+		# Signal barcha AI mashinalarini ham xabar beradi (chalganda
+		# ular ham o'z qo'ng'iroqini chaldiradi). O'yinchi uchun esa
+		# haqiqiy daraxtli tovush — `PlayerCar.honk()`.
 		driver.vehicle.horn_pressed.emit(player)
+		driver.honk()
 	elif event is InputEventKey and event.pressed and (event as InputEventKey).keycode == KEY_F1:
 		_toggle_help()
 
@@ -395,6 +399,10 @@ func _parse_cli() -> void:
 			var vehicle_test := VehicleSelfTest.new()
 			vehicle_test.host = self
 			add_child(vehicle_test)
+			return
+		if args[i] == "--test-audio":
+			var audio_test := AudioSelfTest.new()
+			add_child(audio_test)
 			return
 		if args[i] == "--test-mesh":
 			var mesh_test := MeshSelfTest.new()

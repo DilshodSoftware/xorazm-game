@@ -52,9 +52,25 @@ const IDLE_FALL := 0.55
 ## Silindrlar soni (to'rt yurakli — Xorazm mashinalari barchasi shu)
 const CYLINDERS := 4
 
-## Tovush balandligi. Pastroq qo'yilsa chirsillash kuchliroq,
-## balandroq qo'yilsa — shovqinli.
-const GAIN := 0.13
+## Portlash zarfining vaqt doimiysi, s.
+##
+## DIQQAT: avval zarf NAMUNA SONIGA bog'langan edi (`*= 0,994`),
+## ya'ni vaqtga emas. Natijada o'lganda o'zi TESKARIS bo'lgan
+## fizikka chiqdi: tez mashinada portlashlar orasidagi vaqt
+## qisqaradi, shuning uchun zarf ham qisqaradi va ovoz **jimroq**
+## bo'lib chiqardi. Real dvigatelda esa tez aylanishda ovoz
+## BALANDROQ (ko'proq havo kiradi).
+##
+## 18 ms — portlashdan keyin silindr bosimining pasayishi. Bu
+## qiymat tovushning "vov" qismini uzunligini belgilaydi.
+const FIRE_TAU := 0.018
+
+## Tovush balandligi.
+##
+## O'lchov: bekor qo'yishda cho'qti ≈ 0,17, to'liq gazda ≈ 0,32
+## (o'lchov `--test-audio` sinovida chiqadi). Bu yetarli eshitiladi,
+## lekin boshqa tovushlarni (qo'ng'iroq, zarba) bosib ketmaydi.
+const GAIN := 0.30
 
 ## Tez o'tish chegarasi — past chastotadagi shovqinni kesib tashlaydi
 ## (ovozga "pay" beradi).
@@ -63,6 +79,12 @@ const AIR_CUTOFF := 1400.0
 # O'zgaruvchilar ---------------------------------------------------------
 
 var _generator: AudioStreamGenerator = null
+## Namunalarni yozish nuqtasi.
+##
+## DIQQAT: `push_frame` va `get_frames_available` `AudioStreamPlayer`
+## DA EMAS, `AudioStreamGeneratorPlayback` da. Uni `play()` dan
+## KEYIN olish SHART — oldin olinsa `null` qaytaradi.
+var _playback: AudioStreamGeneratorPlayback = null
 ## 0,0 (bekor) … 1,0 (to'liq gaz)
 var _throttle := 0.0
 ## km/soat — `update_from_car` orqali keladi
@@ -77,11 +99,16 @@ var _phase := 0.0
 var _noise_phase := 0.0
 ## Shina/yo'l shovqini uchun filtr holati
 var _road_lp := 0.0
-## Silindr bloki rezonansi
-var _res_y := 0.0
+## Silindr bloki rezonansi — formulada OLDINGI IKKALA namuna
+## kerak, shuning uchun ikki holat saqlanadi.
+var _res_y1 := 0.0
+var _res_y2 := 0.0
 ## Balandlik filtri holati — chirsillashni kesish uchun
 var _hp_prev_in := 0.0
 var _hp_prev_out := 0.0
+## Namuna uchun zarf koeffitsienti. `FIRE_TAU` dan hisoblanadi va
+## o'yin boshida bir marta qo'yiladi.
+var _fire_decay: float = 0.0
 
 ## Kuzovga ulangan mashina (ixtiyoriy) — kamera bilan birga
 ## ko'chiriladi.
@@ -89,6 +116,9 @@ var follow: Node3D = null
 
 
 func _ready() -> void:
+	# Zarf koeffitsienti: `FIRE_TAU` sekundlik vaqt doimiysi bitta
+	# namuna uchun qanday koefﬁsiyaga tengligini topamiz
+	_fire_decay = exp(-1.0 / maxf(FIRE_TAU * RATE, 1.0))
 	_generator = AudioStreamGenerator.new()
 	_generator.mix_rate = RATE
 	# Bufer 0,12 s — qisqa, lekin kadrdagi uzillishlarda (o'lchash,
@@ -96,9 +126,11 @@ func _ready() -> void:
 	_generator.buffer_length = 0.12
 	stream = _generator
 	volume_db = -6.0
-	# Saf `bus` — standart `Master` oqimiga. `bus = "Master"` deb
-	# yozish `AudioServer` da bus topilmasa xato beradi.
 	play()
+	_playback = get_stream_playback() as AudioStreamGeneratorPlayback
+	if _playback == null:
+		push_warning("AudioStreamGeneratorPlayback ololmadi — "
+			+ "misolik (headless) rejimida ovoz chiqmaydi")
 
 
 ## O'yinchi mashinasidan ma'lumot oladi.
@@ -114,15 +146,76 @@ func stop_sound() -> void:
 	stop()
 
 
+## Ovozni HOFFAZA (oflayn) chizadi — `AudioStreamPlayer` siz.
+##
+## Sinov uchun: real audio qurilmasi headless rejimda yo'q, lekin
+## signallarning O'ZI tekshirilishi mumkin. Bundan tashqari kelajakda
+## faylga eksport qilish ham mumkin.
+##
+## [param seconds] — qancha sekund
+## [param throttle] — gaz, 0…1
+## [param kmh] — tezlik
+func render_offline(seconds: float, throttle: float,
+		kmh: float) -> PackedFloat32Array:
+	_throttle = clampf(throttle, 0.0, 1.0)
+	_speed = absf(kmh)
+	# _ready() chaqirilmagan bo'lishi mumkin — holatlarni to'g'rilaymiz
+	_noise_phase = 0.0
+	_phase = 0.0
+	_fire = 0.0
+	_res_y1 = 0.0
+	_res_y2 = 0.0
+	if _fire_decay <= 0.0:
+		# `_ready()` chaqirilmagan bo'lishi mumkin
+		_fire_decay = exp(-1.0 / maxf(FIRE_TAU * RATE, 1.0))
+	var n: int = int(RATE * seconds)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	# DIQQAT: aylanish HAR NAMUNADA emas, har KADRDA yangilanadi —
+	# haqiqiy o'yinda ham shunday (`_process`). Agar har namunda
+	# yangilansa, mashina 1,5 soniyada emas, 20 namunda (~1 ms)
+	# to'liq tezlashtiriladi va ovoz "sakrab" chiqadi.
+	var per_frame: int = maxi(1, int(RATE / 60.0))
+	var rpm: float = _rpm
+	for i in n:
+		if i % per_frame == 0:
+			rpm = _advance_rpm()
+		out[i] = _sample(rpm)
+	_rpm = rpm
+	return out
+
+
+## Namonalardagi eng kuchli qiymat (mutlaq qiymat).
+static func peak_of(samples: PackedFloat32Array) -> float:
+	var p := 0.0
+	for v in samples:
+		p = maxf(p, absf(v))
+	return p
+
+
+## Namonalardagi o'rtacha kvadrat qiymat (energiya o'lchovi).
+static func rms_of(samples: PackedFloat32Array) -> float:
+	if samples.size() == 0:
+		return 0.0
+	var sum := 0.0
+	for v in samples:
+		sum += v * v
+	return sqrt(sum / float(samples.size()))
+
+
 func _process(_delta: float) -> void:
-	if _generator == null:
+	if _playback == null:
 		return
-	var frames: int = get_frames_available()
+	# Qancha namona kerak — shuncha yozamiz. Sekin kadrda ko'p,
+	# tez kadrda kam: ovoz uzluksiz qoladi.
+	var frames: int = _playback.get_frames_available()
 	if frames <= 0:
 		return
 	var rpm_now: float = _advance_rpm()
 	for i in frames:
-		push_frame(Vector2.ONE * _sample(rpm_now))
+		# Stereo, lekin ikki kanal bir xil — manba o'rtada
+		var v: float = _sample(rpm_now)
+		_playback.push_frame(Vector2(v, v))
 
 
 ## Aylanishni bitta qadamga yangilaydi.
@@ -153,12 +246,15 @@ func _sample(rpm: float) -> float:
 	if _phase >= 1.0:
 		_phase -= 1.0
 		_fire = 1.0
-	# Zarf: har bir portlashda 1 ga tiklanadi, keyin sekin pasayadi.
-	# Bu nima uchun kerak — real portlash bir ZARBA beradi (nota emas):
-	# silindrda portlab chiqqandan keyin havoda shu zahoti yo'qoladi,
-	# keyin keyingi portlashgacha jim bo'ladi. Uzluksiz sinus esa
-	# "uzluksiz vov" beradi — bu motor emas, kompnuterning o'rnatuvchisi.
-	_fire *= 0.994
+	# Zarf: har bir portlashda 1 ga tiklanadi, keyin `FIRE_TAU`
+	# vaqt doimiysi bilan pasayadi.
+	#
+	# Bu nima uchun kerak — real portlash bir ZARBA beradi (nota
+	# emas): silindrda portlab chiqqandan keyin havoda shu zahoti
+	# yo'qoladi, keyin keyingi portlashgacha jim bo'ladi. Uzluksiz
+	# sinus esa "uzluksiz vov" beradi — bu motor emas, kompnuterning
+	# o'rnatuvchisi.
+	_fire *= _fire_decay
 
 	# --- Ovoz ----------------------------------------------------------
 	var f: float = firing
@@ -174,19 +270,30 @@ func _sample(rpm: float) -> float:
 		+ ProcAudio.next_noise() * 0.35
 	v += n * 0.30
 
-	# Silindr bloki rezonansi — "ha" ovozi. Ikki qutuli rezonans:
-	#     y[n] = x[n] − 2·r·cos(w)·y[n−1] + r²·y[n−2]
-	# `r` — so'nish (1 ga yaqin bo'lsa uzoq o'tadi), `w` — burchak
-	# chastotasi. Ikki holat (y1, y2) saqlanadi, chunki formulada
-	# oldingi IKKALA namuna kerak.
+	# Silindr bloki rezonansi — "ha" ovozi.
+	#
+	# DIQQAT: BELGI MUHIM. Ikki qutuli rezonansning to'g'ri shakli
+	#     y[n] = x[n] − ( 2·r·cos(w)·y[n−1] − r²·y[n−2] )
+	# ya'ni `r²` atamasini QO'SHISH emas, A YIRISH kerak.
+	#
+	# Xato qilinganda qutular `-2,39` va `+0,41` ga chiqadi
+	# (o'zgaruvchisi `r²` belgisi teskari bo'lgani uchun), ya'ni
+	# rezonans BARQAROR EMAS — signal har 18 namundada `inf` ga
+	# yetardi va butun motor ovozi `NaN` ga aylanardi.
+	#
+	# O'chov: sinovda (`--test-audio`) signalning NaN bo'lmasligi
+	# tekshiriladi. Bu xato tuzatilmasdan sinov kuzatmasdi —
+	# jimgina buzilish hech qanday xato bermaydi.
 	var w: float = TAU * clampf(f * 2.0, 20.0, float(RATE) * 0.45) \
 		/ float(RATE)
 	var r: float = 0.992
-	var res: float = v * 0.5 - 2.0 * r * cos(w) * _res_y1 \
-		+ r * r * _res_y2
+	var res: float = v * 0.5 - (2.0 * r * cos(w) * _res_y1 \
+		- r * r * _res_y2)
 	_res_y2 = _res_y1
 	_res_y1 = res
-	v += res * 0.25
+	# Rezonans kuchaytiruvchi: r = 0,992 da uning kuchi ~1/(1−r²)
+	# ≈ 126 barobar. Ovoz kesilmasligi uchun chegilanadi.
+	v += clampf(res, -6.0, 6.0) * 0.25
 
 	# Zarf bilan ko'paytirish: har bir portlashda ovoz "urib" chiqadi
 	v *= 0.25 + _fire * 0.85

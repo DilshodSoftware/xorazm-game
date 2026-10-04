@@ -36,6 +36,10 @@ var vehicle: Vehicle = null
 var player: Player = null
 var _steer := 0.0
 var _throttle := 0.0
+## Daraxtli motor ovozi (hech qanday audio fayl yo'q).
+var _engine: EngineSound = null
+## Qo'ng'iroq — bir martalik tovush.
+var _horn_player: AudioStreamPlayer3D = null
 
 
 func _ready() -> void:
@@ -64,6 +68,7 @@ func take_control(car: Vehicle, who: Player) -> void:
 	# harakat qilinadi). 1,02 Y — ko'z balandligi yer ustidan
 	# ~1,15 m. −Z — oldingi tomon.
 	who.rig.attach_seat(car, Vector3(-0.30, 1.02, 0.10))
+	_start_audio(car)
 	set_physics_process(true)
 	vehicle.entered.emit(who)
 
@@ -91,6 +96,7 @@ func release() -> void:
 	vehicle.occupied = false
 	vehicle.exited.emit(player)
 	vehicle.driver = null
+	_stop_audio()
 	if player != null:
 		player.rig.set_in_vehicle(false)
 		player.rig.detach_seat()
@@ -119,6 +125,8 @@ func _physics_process(delta: float) -> void:
 		# O'yinchi tuguni mashina bilan birga ko'chadi — tushganda
 		# to'g'ri nuqtada chiqadi
 		player.global_position = vehicle.global_position
+	if _engine != null:
+		_engine.update_from_car(maxf(_throttle, 0.0), vehicle.speed_kmh)
 	speed_changed.emit(vehicle.speed_kmh)
 
 
@@ -153,3 +161,50 @@ func _read_input(delta: float) -> void:
 		# `drive()` keyingi qatorda uni yana nolgacha tushirardi —
 		# ya'ni `COAST_DRAG` butunlay O'LIK kod edi: gazni
 		# bo'shatganda mashinani faqat havo qarshiligi to'xtarardi.
+
+
+# ------------------------------------------------------------------- OVOZ
+
+## Daraxtli motor ovozini ishga tushiradi.
+##
+## NIMA UCHUN SHU YERDA (va alohida sinfda emas)
+## Ovoz haydash holatiga bog'liq: gaz, tormoz, tezlik. `PlayerCar`
+## allaqachon shularni biladi va har kadrda `_physics_process` da
+## qayta ishlatadi — alohida tizim yaratish ikki joyda bir xil
+## ma'lumot saqlagan bo'lardi.
+##
+## Ovoz `AudioStreamPlayer` (2D, o'quvchiga bog'liq emas) — chunki
+## o'yinchi MASHINANING ICHIDA turadi. 3D tovushda o'quvchi
+## manzildan 10 sm masofada turgani uchun balandlik keskin
+## o'tib ketardi (yoki butunlay yo'qolardi).
+func _start_audio(car: Vehicle) -> void:
+	_stop_audio()
+	_engine = EngineSound.new()
+	_engine.name = "Motor ovozi"
+	add_child(_engine)
+	_horn_player = AudioStreamPlayer3D.new()
+	_horn_player.name = "Qo'ng'iroq"
+	# Xuddi shu mashinaning o'ziga ulanadi — u boshqa joyda
+	# eshitilmasdi
+	_horn_player.position = Vector3(0.0, 0.6, 0.0)
+	_horn_player.unit_size = 6.0
+	_horn_player.max_distance = 55.0
+	_horn_player.stream = ProcAudio.horn()
+	add_child(_horn_player)
+
+
+func _stop_audio() -> void:
+	if _engine != null:
+		_engine.queue_free()
+		_engine = null
+	if _horn_player != null:
+		_horn_player.queue_free()
+		_horn_player = null
+
+
+## Qo'ng'iroqni chaldiradi (H tugmasi).
+func honk() -> void:
+	if _horn_player == null:
+		return
+	_horn_player.pitch_scale = randf_range(0.97, 1.03)
+	_horn_player.play()

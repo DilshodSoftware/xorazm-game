@@ -125,6 +125,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
+		# Mashina ichida: `_yaw`/`_pitch` transformga qo'llanmagani
+		# uchun (qarang `Player._physics_process` — u yerda erta
+		# qaytadi) ularni bevosita ishlatish ko'rinmaydi. Shuning
+		# uchun qarash burchagi rigga topshiriladi.
+		if in_vehicle != null:
+			rig.add_look(-motion.relative.x * _mouse_sensitivity,
+				-motion.relative.y * _mouse_sensitivity)
+			return
 		_yaw -= motion.relative.x * _mouse_sensitivity
 		_pitch = clampf(
 			_pitch - motion.relative.y * _mouse_sensitivity,

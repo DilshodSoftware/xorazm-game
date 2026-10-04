@@ -359,13 +359,14 @@ oynalari yarim doira shaklida.
 
 | Ko'rsatkich | Natija |
 |---|---|
-| Kadrlar soni | **49,8 FPS** (20,1 ms) |
-| Chizqichlar | 184 / kadr |
-| Primitivlar | 248 075 / kadr |
+| Kadrlar soni | **47,3 FPS** (21,1 ms) |
+| Chizqichlar | 156 / kadr |
+| Primitivlar | 247 793 / kadr |
 | Mashinalar | 76 ta (35 harakatlanuvchi + 41 qo'yilgan) |
 
-4-bosqichda 60,1 FPS edi (mashinasiz). Mashinalar bilan 49,8 FPS —
-Intel UHD ICL GT1 uchun o'ynab olinadigan daraja.
+4-bosqichda 60,1 FPS edi (mashinasiz). 960×540 da 51,9 FPS,
+1600×900 da 44,0 FPS — demak cheklovchi chizish/soxta pay
+(fill rate) va uchburchak soni, chizqich soni emas.
 
 **Trafik optimizatsiyasi (o'lchov bilan aniqlangan):**
 
@@ -380,6 +381,29 @@ yurib o'tardi **va** `TerrainGen.height_at()` ni protsedural
 hisoblar edi. Bitta kadrda 8840 marta chaqirilardi. Endi uzunlik
 jadvali bir marta quriladi, balandlik faqat kerak bo'lganda
 so'raladi.
+
+**Kuzov geometriyasi faqat BIR marta chiziladi.**
+
+`_build_body()` avval `CarShapes.build()` ni chaqirib, natijani
+tekshirib va **tashlab ketardi** — keyin `_build_shared_body()`
+xuddi shu geometriyani yana qurardi (yoki keshdan olardi). Ya'ni
+har bir mashina uchun ~4000 uchburchak ikki marta chizilardi.
+Kesh foydasiz edi: kesh ishlagan holatda ham chiqindi qism har
+doim to'liq chizilardi. Bu ko'chadagi 76 ta mashina boshlang'ich
+yuklanishni ~30 s oshirgan edi.
+
+**G'ildoraklar: qo'yilgan — statik, harakatlanuvchi — aylanadi.**
+
+Har bir mashina 5 ta alohida `MeshInstance3D` edi (kuzov + 4
+g'ildorak) = 380 chizqich. Endi:
+- **qo'yilgan mashina** — g'ildorak kuzov mesh'iga birlashtiriladi
+  (ular turgan, statik g'ildorak fizikaga to'g'ri) → 1 chizqich
+- **harakatlanuvchi mashina** — 4 ta alohida tugun, aylanadi
+
+Avval AI mashinalarining g'ildoraklari umuman **bir kadam ham
+aylanmasdi**: `_process` `physics_driven` bo'lmasa butunlay
+chiqardi, AI mashinalari esa `freeze` bilan qo'yilgan bo'lib
+`linear_velocity` doim nol. Endi tezlik meta'dan olinadi.
 
 
 ### Boshqalar
@@ -450,7 +474,7 @@ hosil qilmagan edi: `apply_torque` bilan 49°, bir xil kuch bilan 0°.
 
 ### Tekshiruvlar
 
-164 ta test, hammasi `--test*` bayroqlari bilan (barchasi o'tadi):
+167 ta test, hammasi `--test*` bayroqlari bilan (barchasi o'tadi):
 
 | Fayl | Testlar | Nima tekshiradi |
 |---|---|---|
@@ -459,4 +483,4 @@ hosil qilmagan edi: `apply_torque` bilan 49°, bir xil kuch bilan 0°.
 | `tools/road_selftest.gd` | 15 | yo'l tarmog'i, ko'priklar |
 | `tools/building_selftest.gd` | 24 | Tandirchi uylari, eshik |
 | `tools/mesh_selftest.gd` | 17 | geometriya yordamchilari |
-| `tools/vehicle_selftest.gd` | 36 | mashina + real haydash |
+| `tools/vehicle_selftest.gd` | 39 | mashina + real haydash |

@@ -109,11 +109,28 @@ const MUK := 2.4                     ## asfalt (uzunlik — yetakchi kuch)
 ## 0,8–1,0 g bilan buriladi.
 const MUK_LATERAL := 1.0
 
-## Burish kuchi. Oldingi g'ildorak yon kuchi shu miqdorda
-## burish burchagiga proportsional. 1,0 = to'liq burishda kuch
-## `N` ga teng (taxminan 1 g). Katta qiymat mashinani "qayiq"
-## qilib buradi, kichik qiymat — aksar tutqichli.
-const TURN_GAIN := 0.75
+## Maksimal YON TEZLANISH, m/s². To'liq burish burchagida shu
+## tezlanishga intiladi.
+##
+## DIQQAT: avval burchak kuchiga proportsional kuch ishlatilardi
+## (`TURN_GAIN = 0,75`), ya'ni tik yon tezlanish DOIMIY ~2,1 m/s²
+## edi. Shundan burish radiusi `R = v²/a` bo'lib chiqadi va
+## tezlik KVADRATI bilan o'sadi: 72 km/h da 188 m — ko'chada qator
+## almashib bo'lmasdi. Endi aylanish radiusi beriladi va tezlanish
+## undan hisoblanadi.
+##
+## `8,0` m/s² ≈ 0,82 g — bu yengil mashina (Nexia, Spark) uchun
+## real chegara. Kalka qishloq sharoitida 0,9 g gʻilish mumkin,
+## ammo u holda mashina "qayiq" bo'lib ketadi va tormozlashni
+## yo'qotadi (sinovda 11,8 → 2,2 km/soat holati).
+const TURN_ACCEL := 8.0
+
+## Tezlikda burish kuchining yumshalishi, m/s. Yuqoridagi
+## formuladagi bo'luvchi: shu tezlikdan boshlab kuch
+## `v / 18,0` ga bo'linadi. Bu qamishli burishni beradi — 18 m/s
+## (65 km/h) da kuch 1,0 bo'ladi, 36 m/s da 0,5.
+const TURN_SOFTEN_SPEED := 18.0
+
 const MUK_HANDBRAKE := 0.9           ## qo'lda tormoz — orqa g'ildorak
 const AERO_DRAG := 0.9              ## havo qarshiligi (tezlik² ga)
 ## G'ildorak aylanish qarshiligi. Haqiqiy qiymat vaznning 1–2% —
@@ -141,6 +158,16 @@ var driver: Node3D = null
 var physics_driven := false
 
 ## Beshlang'ich sozlama — sinov va sozlash uchun.
+## G'ildoraklar qo'llanadimi (alohida tugun) yoki kuzov mesh'iga
+## birlashtirilganmi (statik) — qarang `_build_wheels`.
+##
+## QO'YILGAN (parkovlangan) mashinalarda aylanish KERAK EMAS:
+## ular turgan, demak statik g'ildorak fizikaga to'g'ri va
+## 0 ta qo'shimcha chizqich. HARAKATLANUVCHI AI mashinalarida
+## aylanish kerak — uzoqdan qaraganda "qotib qolgan" g'ildorak
+## o'yinchi darajasini pasayiradi.
+var wheels_animate := false
+
 var max_steer := 0.0
 var steer_now := 0.0
 var engine_now := 0.0
@@ -165,12 +192,20 @@ func _ready() -> void:
 
 
 ## Mashinani quradi: geometriya, urish shakli, osilish nuqtalari.
+## [param driveable] — o'yinchi haydaydimi yoki kinematik AI?
+## [param animate_wheels] — g'ildoraklar aylanadimi? Qo'yilgan
+## mashinalar uchun `false`: ular turgan, statik g'ildorak to'g'ri
+## va kuzov mesh'iga birlashtirilishi bilan 4 ta chizqich
+## tejlanadi (41 ta mashina = 164 ta chizqich).
 static func create(model: String, body_colour: Color,
-		driveable: bool) -> Vehicle:
+		driveable: bool, animate_wheels: bool = true) -> Vehicle:
 	var vehicle := Vehicle.new()
 	vehicle.model_key = model
 	vehicle.spec = CarSpecs.find(model)
 	vehicle.physics_driven = driveable
+	# O'yinchi va HARAKATLANUVCHI AI mashinalarida g'ildoraklar
+	# aylanadi. Qo'yilgan mashinalarda esa statik qoladi.
+	vehicle.wheels_animate = animate_wheels
 	vehicle.name = "Mashina_%s" % model
 	vehicle.collision_layer = PhysicsLayers.VEHICLE
 	vehicle.mass = float(vehicle.spec["massa"])
@@ -242,8 +277,12 @@ static func _wheel_sag(spec: Dictionary) -> float:
 static var _body_cache: Dictionary = {}
 
 
+## [param animate] — g'ildoraklar aylanadimi? Agar `false` bo'lsa,
+## ular kuzov mesh'i ichiga chiziladi va alohida chizqich kerak
+## bo'lmaydi. Qo'yilgan mashinalar uchun shunday (ular turgan —
+## statik g'ildorak to'g'ri).
 static func _build_shared_body(parent: Node3D, spec: Dictionary,
-		colour: Color) -> void:
+		colour: Color, animate: bool = true) -> void:
 	if _shared_body_material == null:
 		_shared_body_material = StandardMaterial3D.new()
 		_shared_body_material.vertex_color_use_as_albedo = true
@@ -275,7 +314,8 @@ static func _build_shared_body(parent: Node3D, spec: Dictionary,
 	var radius := wr
 	var width := ww
 
-	var key := "%s|%s" % [spec["kalit"], colour.to_html(false)]
+	var key := "%s|%s|%s" % [spec["kalit"], colour.to_html(false),
+		"1" if animate else "0"]
 	var mesh: Mesh = null
 	if _body_cache.has(key):
 		mesh = _body_cache[key]
@@ -287,10 +327,13 @@ static func _build_shared_body(parent: Node3D, spec: Dictionary,
 			# chiziladi (ko'rish uchun o'zgartirish mumkin emas —
 			# ular kinematik, `place_on_road` faqat butun mashinani
 		# ko'chiradi). Bu 5 ta chizqichni 1 ga tushiradi.
-		CarShapes.build_wheel_at(builder, i, radius, width)
-		CarShapes.build_wheel_at(builder, j, radius, width)
-		CarShapes.build_wheel_at(builder, k, radius, width)
-		CarShapes.build_wheel_at(builder, l, radius, width)
+		if not animate:
+			# Statik g'ildorak kuzov ichida — alohida chizqich kerak
+			# emas (parkovlangan mashina uchun to'g'ri: u turadi).
+			CarShapes.build_wheel_at(builder, i, radius, width)
+			CarShapes.build_wheel_at(builder, j, radius, width)
+			CarShapes.build_wheel_at(builder, k, radius, width)
+			CarShapes.build_wheel_at(builder, l, radius, width)
 		if builder.is_empty():
 			push_error("Mashina kuzovi bo'sh qoldi: %s" % spec["kalit"])
 			return
@@ -306,30 +349,23 @@ static func _build_shared_body(parent: Node3D, spec: Dictionary,
 
 
 
+## Kuzovni quradi.
+##
+## DIQQAT: avval shu funksiya `CarShapes.build` ni CHAQRIDI, uni
+## tekshirdi va TASHLAB KETDI — keyin `_build_shared_body` xuddi
+## shu geometriyani yana qurardi (yoki keshdan olardi). Ya'ni har
+## bir mashina uchun ~4000 uchburchak ikki marta chizilardi.
+##
+## Bu keshni foydasiz qilgan edi: kesh ishlagan holatda ham
+## `_build_body` ning chiqindi qismi har doim to'liq chizilardi.
+## O'lchov: ko'chadagi 76 ta mashina boshlang'ich yuklanishni
+## 30 s oshirardi.
 func _build_body() -> void:
-	var builder := MeshBuilder.new()
-	builder.want_collision = false
-	CarShapes.build(builder, spec, Vector3.ZERO, colour, false)
-	if builder.is_empty():
-		push_error("Mashina kuzovi bo'sh qoldi: %s" % model_key)
-		return
 	# DIQQAT: soya faqat O'YINCHI mashinasida. AI va qo'yilgan
-	# mashinalar soyasiz: ko'chada 35 ta harakatlanuvchi + 41 ta
-	# qo'yilgan mashina bo'lganda, ularning hammasi soya xaritasiga
-	# tushib, har biriga ~4000 uchburchak qo'shardi — FPS 60 dan
-	# 1 gacha tushdi (40 kadr: 0,7 s dan 40 s ga). Past quyosh
-	# soyasi uzoqda ham deyarli ko'rinmaydi.
-	# DIQQAT: material BARCHA mashinalar o'rtasida BO'LINADI.
-	#
-	# Har bir mashina uchun alohida StandardMaterial3D yaratilsa,
-	# `gl_compatibility` renderer har biriga shayder variantini
-	# qayta kompilyatsiya qiladi: ko'chada 76 ta mashina = 30 s
-	# qo'shimcha WAQT (o'lchovda aniqlandi: 0 ta mashina 9,5 s,
-	# 1 ta mashina 40 s).
-	#
-	# Bo'lish mumkin, chunki rang mesh VERTEX ranglarida — material
-	# barchasi uchun bir xil (vertex_color_use_as_albedo).
-	_build_shared_body(self, spec, colour)
+	# mashinalar soyasiz: ularning hammasi soya xaritasiga tushsa,
+	# har biriga ~4000 uchburchak qo'shilardi. Past quyosh soyasi
+	# uzoqda ham deyarli ko'rinmaydi.
+	_build_shared_body(self, spec, colour, wheels_animate)
 
 
 ## Zarba shakli.
@@ -390,7 +426,7 @@ func _build_wheels() -> void:
 	# chizilgan (`_build_shared_body`) va aylanmaydi — ular
 	# kinematik. Sabab: har bir tugun bitta chizqich; 76 ta AI
 	# mashinasida 4 tadan = 304 chizqich, o'rniga 76 ta.
-	if not physics_driven:
+	if not wheels_animate:
 		return
 
 	var mesh := _wheel_visual_mesh()
@@ -475,7 +511,6 @@ func _physics_process(delta: float) -> void:
 	_last_torque = Vector3.ZERO
 
 	for i in _wheel_attach.size():
-		var attachment: Vector3 = global_transform * _wheel_attach[i]
 		var radius: float = float(spec["radius"])
 		# Nishat korpus qutisining OSTIDAN boshlanadi (yuqoraga qarang)
 
@@ -491,7 +526,6 @@ func _physics_process(delta: float) -> void:
 		# chiqadi, lekin korpus qutisining OSTIDA qoladi.
 		var ray_origin: Vector3 = global_transform * Vector3(
 			_wheel_attach[i].x, RAY_ORIGIN_Y, _wheel_attach[i].z)
-		var reach: float = radius + SUSPENSION_TRAVEL + 0.06
 		var query := PhysicsRayQueryParameters3D.create(
 			ray_origin, ray_origin - up * RAY_REACH)
 		query.collision_mask = PhysicsLayers.SOLID
@@ -640,8 +674,19 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 			limit *= lerpf(MUK_LATERAL, MUK_LATERAL * 0.4, handbrake_now)
 		var side_force := 0.0
 		if front:
-			side_force = clampf(-steer_now * normal_forces[i] * TURN_GAIN,
-				-limit, limit)
+			# DIQQAT: bu avval `-steer × N × TURN_GAIN` edi —
+			# tezlikka bog'liq EMAS. Natijada tinch burishda
+			# tik yon tezlanish doimiy qolardi (~2,1 m/s²) va
+			# burish radiusi `R = v²/a` bo'lib TEZLIK KVADRATI bilan
+			# o'sardi: 72 km/h da 188 m! Ko'chada qator almashib
+			# bo'lmasdi. Endi burchak kuchiga emas, KERAKLI yon
+			# tezlanishga o'tiladi: `a = vaqt / R`, ya'ni sekin
+			# tezlikda kuchli, tez tezlikda yumshoq (kamera).
+			var steer_ratio: float = steer_now / maxf(max_steer, 0.01)
+			var wanted_lat: float = steer_ratio * TURN_ACCEL \
+				/ maxf(1.0, absf(linear_velocity.dot(Vector3.FORWARD))
+					/ TURN_SOFTEN_SPEED)
+			side_force = clampf(-wanted_lat * mass * 0.5, -limit, limit)
 		else:
 			side_force = clampf(-v_side * share / delta, -limit, limit)
 
@@ -657,8 +702,13 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 			drive = engine_now * 0.5
 		# Tormoz: oddiy tormoz to'rtala g'ildorakka, qo'lda tormoz
 		# faqat orqaga
-		var brake := brake_now * 0.5
+		# DIQQAT: `car_specs.gd` da `tormoz` — JAMI kuch (N). To'rt
+		# g'ildorakka teng taqsimlanishi uchun 0,25 kerak. 0,5
+		# bilan har biriga ikki barobar ko'p berilardi, qo'lda
+		# tormozda esa uch barobar.
+		var brake := brake_now * 0.25
 		if not front:
+			# Qo'lda tormoz orqa g'ildoraklarga qo'shimcha
 			brake += brake_now * handbrake_now * 0.5
 		# G'ildorak aylanish qarshiligi — tezlikka proporsional,
 		# kontakt kuchiga bog'liq (haqiqiy shunday)
@@ -666,8 +716,21 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 
 		# Tormoz ham, gaz ham ishqalanish chegarasidan o'tmaydi —
 		# aks holda mashina tormozlaganda ham sirg'alib ketardi
-		var total: float = drive + roll - brake * signf(v_forward)
-		var long_force: float = clampf(total, -limit * 1.25, limit * 1.25)
+		# DIQQAT: `signf(0.0)` nol qaytaradi — tik yo'lda to'xtagan
+		# mashinani tormoz USHLAMASDI (tezlik nolga tushgach kuch
+		# yo'qolardi). Tezlik juda kichik bo'lsa yo'nalish +1
+		# olinadi: tormoz kuchi nol bo'lmaydi.
+		var dir := signf(v_forward)
+		if absf(v_forward) < 0.05:
+			dir = 1.0
+		var total: float = drive + roll - brake * dir
+		# DIQQAT: avval chegara `limit` (LATERAL chegarasi) edi, ya'ni
+		# gaz va tormoz kuchi ham yon ishqalanish koeffitsientiga
+		# bog'langan. Noto'g'ri: asfaltda ham, g'ishtda ham
+		# uzunlik ishqalanishi bor. Endi o'z koeffitsienti.
+		var long_limit: float = normal_forces[i] * MUK \
+			* (0.6 if (not front and handbrake_now > 0.5) else 1.0)
+		var long_force: float = clampf(total, -long_limit, long_limit)
 
 		_last_side[i] = side_force
 		# Xuddi shuningdek: kuch markazda, moment alohida.
@@ -789,7 +852,17 @@ func is_airborne() -> bool:
 ## yana kengayadi.
 func _update_visuals(delta: float) -> void:
 	var radius: float = maxf(float(spec["radius"]), 0.1)
-	_wheel_spin += (linear_velocity.length() / radius) * delta
+	# DIQQAT: `linear_velocity` AI mashinalarida DOIM nol (ular
+	# `freeze` bilan qo'yilgan, `set_reported_speed` esa tezlikni
+	# faqat meta/`speed_kmh` ga yozadi). Shu bois g'ildoraklar
+	# hech qachon aylanmasdi. Endi kerak bo'lsa meta'dan olinadi.
+	# Yana: vertikal tezlik (sakrash) g'ildorakni aylantirmasligi
+	# kerak — faqat YERGA BO'YLAN yo'nalish aylantiradi.
+	var v: float = Vector2(
+		linear_velocity.x, linear_velocity.z).length()
+	if not physics_driven:
+		v = speed_kmh / 3.6
+	_wheel_spin += (v / radius) * delta
 	var spin: float = fposmod(-_wheel_spin, TAU)
 	for i in _wheel_visual.size():
 		var node: MeshInstance3D = _wheel_visual[i]
@@ -799,7 +872,13 @@ func _update_visuals(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if not physics_driven:
+	# DIQQAT: avval `physics_driven` bo'lmasa butunlay chiqardi —
+	# ya'ni AI mashinalarining g'ildoraklari BIR KADHAM ham
+	# aylanmasdi (o'zgartirilgan g'ildorakni ham qaytarish
+	# `_process` siz qolardi). Endi faqat `wheels_animate` bo'lsa
+	# ishlatiladi: qo'yilgan mashinalarda statik g'ildorak to'g'ri
+	# (ular turgan) va chizqich ham tejiladi.
+	if not wheels_animate:
 		return
 	_update_visuals(delta)
 
@@ -862,8 +941,14 @@ func update_speed() -> void:
 func place_on_road(position: Vector3, yaw: float, speed: float) -> void:
 	# Korpus o'zining statik holatida `sag − erkin uzunlik` tepada
 	# turadi: shunda g'ildorak markazi yerga tegadi
-	var lift: float = float(spec["radius"]) - (SUSPENSION_FREE
-		- float(spec["massa"]) * 9.8 / 4.0 / SUSPENSION_STIFFNESS)
+	# DIQQAT: korpusning tinch holatdagi balandligi `erkin uzunlik −
+	# siqilish` = `SUSPENSION_FREE − sag`. AVVAL bu yerga
+	# `radius − (SUSPENSION_FREE − sag)` yozilgan edi — ya'ni
+	# G'ILDORAKNING mahalliy siljishi. Bu ikki marta qo'shilgan:
+	# marshrutka 29 sm, Nexia 8 sm havoda turardi (ko'z bilan
+	# aniq ko'rinadi, o'lchash esa 0,9 m chegara bilan yashirdi).
+	var lift: float = SUSPENSION_FREE \
+		- float(spec["massa"]) * 9.8 / 4.0 / SUSPENSION_STIFFNESS
 	global_position = Vector3(position.x, position.y + lift, position.z)
 	rotation.y = yaw
 	_update_visuals(_delta)

@@ -303,7 +303,13 @@ func spawn_parked() -> void:
 			break
 		_parked_plots.append(place)
 		var car := Vehicle.create(String(place["model"]),
-			_random_colour(place["spec"]), false)
+			_random_colour(place["spec"]), false, false)
+		# Qo'yilgan mashina TURGAN — uning g'ildoraklari aylanmaydi,
+		# demak statik g'ildorak to'g'ri va kuzov mesh'iga
+		# birlashtirilishi mumkin (4 ta chizqich tejiladi).
+		# 41 ta qo'yilgan mashina = 164 ta chizqich.
+		# Harakatlanuvchi mashinalarda esa g'ildorak Aylanadi —
+		# aks holda uzoqdan qaraganda "qotib qolgan" bo'lib ko'rinadi.
 		add_child(car)
 		car.rotation.y = float(place["yaw"])
 		car.global_position = Vector3(

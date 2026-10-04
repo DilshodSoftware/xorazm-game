@@ -17,7 +17,7 @@ extends Node
 
 ## Har bir `check` chaqiruvi shu sonni oshishi SHART. Aks holda
 ## "0 xato" chiqib, sinov bevaqt to'xtaganini ko'rsatmaydi.
-const EXPECTED_CHECKS := 36
+const EXPECTED_CHECKS := 39
 
 var host: Node = null
 
@@ -460,7 +460,16 @@ func _test_traffic_spawns() -> void:
 		if RoadNetwork.nearest_road_point(here2)["masofa"] > 9.0:
 			off_road += 1
 		var ground: float = TerrainGen.height_at(here2.x, here2.y)
-		if absf(car.global_position.y - ground) > 0.9:
+		# DIQQAT: chegara 0,9 m emas, 0,30 m. AVVAL 0,9 m edi —
+		# bu o'chirilgan xatoni YASHIRDI: `place_on_road` korpus
+		# balandligini `radius − (erkin − siqilish)` deb hisoblar edi,
+		# ya'ni g'ildorak siljishini ikkinchi marta qo'shardi.
+		# Natija: marshrutka 29 sm, Nexia 8 sm havoda turardi.
+		# Ko'z bilan aniq ko'rinadi, lekin 0,9 m chegara uni
+		# "yerga tegadi" deb o'tkazib yuborardi.
+		# 0,30 m — marshrutkadan boshqa eng baland mashina uchun
+		# (g'ildorak radiusi katta) haqiqiy zaxira.
+		if absf(car.global_position.y - ground) > 0.30:
 			floating += 1
 	_check("Harakatlanuvchi mashinalar yo'l ustida", off_road == 0,
 		"(%d ta chetda)" % off_road)
@@ -645,16 +654,58 @@ func _test_driving() -> void:
 	#                 bilan qisilgan, inersiya noto'g'ri, yoki
 	#                 `angular_damp` juda katta
 	var spin_start: float = car.global_rotation.y
-	for i in 40:
-		car.apply_torque(Vector3(0.0, 5000.0, 0.0))
-		await get_tree().physics_frame
-	print_rich("      [color=#a89d8a]BEVOSITA MOMENT: apply_torque(5000 N·m) "
-		+ "→ %.1f° (%.1f rad/s, qarshilik %.2f)[/color]" % [
-			rad_to_deg(absf(wrapf(car.global_rotation.y - spin_start,
-				-PI, PI))), car.angular_velocity.y, car.angular_damp])
-
-	_check("Mashina buriladi", turned > 0.08,
+	_check("Mashina turgan joyda buriladi", turned > 0.08,
 		"(%.0f gradus, %.1f km/soat)" % [rad_to_deg(turned), car.speed_kmh])
+
+	# --- TEZLIKDA BURISH (MUHIM REGRESSIYA QAT'I) ---
+	#
+	# Yuqoridagi sinov 3 km/soatda o'tkaziladi, chunki Kosiblar
+	# ko'chasi 7 m eni va turgan holda burishda mashina devorga
+	# urib ketadi. LEKIN shu sababli avvalgi fizika nuqsoni
+	# ko'rinmasdi:
+	#
+	#   Yon kuch burchakka PROPORTSIONAL edi, tezlikka emas.
+	#   Natijada tik yon tezlanish doimiy (~2,1 m/s²) bo'lib
+	#   qolardi va burish radiusi `R = v²/a` bo'lib chiqardi:
+	#   72 km/h da 188 m! Ko'chada qator almashib bo'lmasdi.
+	#
+	# Bu sinov aynan shu nuqsonni ushlaydi: 50 km/soatda to'liq
+	# burish burchagi bilan aylanish TEZLIGI tekshiriladi.
+	# Talab qilingan yon tezlanish 8 m/s² ≈ 0,82 g — yengil
+	# mashina uchun real chegara.
+	car.freeze = true
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	car.global_position = Vector3(point.x, ground + 0.20, point.y)
+	car.rotation.y = float(spot["yaw"])
+	car.freeze = false
+	# Tezlikni to'g'ridan-to'g'ri beramiz — tezlanishni o'lchash
+	# kerak emas, 50 km/soatga chiqish uchun 100 m yo'l kerak,
+	# Kosiblar ko'chasi buncha uzun emas.
+	var fwd := -car.global_basis.z
+	car.linear_velocity = fwd * (50.0 / 3.6)
+	await get_tree().physics_frame
+	var fast_before: float = car.global_rotation.y
+	var fast_wheels: int = 0
+	for i in 22:
+		car.drive(0.6, 1.0, 0.0, 0.0)
+		car.update_speed()
+		await get_tree().physics_frame
+		fast_wheels = car.wheels_on_floor()
+	# ~0,37 soniya. 14 m/s da burchak ~0,5 rad/s × 0,37 = 0,19 rad
+	var fast_yaw: float = absf(wrapf(
+		car.global_rotation.y - fast_before, -PI, PI))
+	var omega: float = absf(car.angular_velocity.y)
+	print_rich("      [color=#a89d8a]50 km/soatda: aylanish tezligi "
+		+ "%.3f rad/s, burchak %.0f°, g'ildorak %d/4[/color]"
+		% [omega, rad_to_deg(fast_yaw), fast_wheels])
+	_check("Tezlikda ham buriladi (50 km/soat)", omega > 0.22,
+		"(%.3f rad/s, talab > 0,22; eski model ~0,15 bo'lardi)"
+		% omega)
+	_check("Tezlikda ham to'liq buriladi", fast_yaw > 0.10,
+		"(%.0f°, %.1f km/soat)" % [rad_to_deg(fast_yaw), car.speed_kmh])
+	_check("Tezlikda g'ildoraklar yerdan ko'tarilmaydi",
+		fast_wheels == 4, "(%d/4)" % fast_wheels)
 
 	car.freeze = true
 	car.queue_free()

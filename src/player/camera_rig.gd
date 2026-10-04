@@ -110,6 +110,28 @@ func set_fov_base(value: float) -> void:
 func attach_seat(node: Node3D, offset: Vector3) -> void:
 	seat_target = node
 	seat_offset = offset
+	look_yaw = 0.0
+	look_pitch = 0.0
+
+
+## Mashina ichida sichqoncha bilan qarash burchagi, rad.
+##
+## Alohida saqlanadi, chunki mashina rejimida `Player._yaw` va
+## `Player._pitch` transformga qo'llanmaydi (qarang
+## `Player._physics_process` — u yerda erta qaytadi). Bu ikki
+## qiymat "mashina yo'nalishidan QANCHA qaragan" degani.
+var look_yaw := 0.0
+var look_pitch := 0.0
+
+
+## Sichqoncha harakati — faqat QARASH burchagini o'zgartiradi.
+##
+## Oyna burish burchagi emas: mashina o'z yo'nalishini o'zi buradi
+## (GTA/Mafia 2 usuli), o'yinchi esa atrofga qaray oladi.
+func add_look(yaw_delta: float, pitch_delta: float) -> void:
+	look_yaw = wrapf(look_yaw + yaw_delta, -PI, PI)
+	look_pitch = clampf(look_pitch + pitch_delta,
+		deg_to_rad(-70.0), deg_to_rad(50.0))
 
 
 func detach_seat() -> void:
@@ -129,11 +151,30 @@ func _process(delta: float) -> void:
 	# ikkalasi qo'shilsa kamera betakror bo'lardi.
 	if seat_target != null and is_instance_valid(seat_target):
 		var parent := get_parent() as Node3D
-		var world: Vector3 = seat_target.global_position + seat_offset
+		# DIQQAT: offset MASHINANING MAHALLIY koordinatasida beriladi
+		# va `to_global` bilan dunyoga o'tadi. AVVAL global_position
+		# ga to'g'ridan-to'g'ri qo'shilardi — ya'ni offset
+		# DUNYO yo'nalishida qolardi va mashina burilganda
+		# kamera chetga surilmasdi.
+		var world: Vector3 = seat_target.to_global(seat_offset)
 		if parent != null:
 			position = parent.to_local(world)
 		else:
 			position = world
+		# Qarash yo'nalishi: MASHINANING yo'nalishi + sichqoncha
+		# burilishi.
+		#
+		# DIQQAT: avval shu yerda `camera.rotation = Vector3.ZERO`
+		# qilib `return` qilinardi, lekin rigning O'Z burilishi ham
+		# o'zgarmasdi. Rig `Player` ning farqli bo'lgani — va
+		# `Player._physics_process` mashina rejimida `rotation.y` va
+		# `rig.rotation.x` ni QO'LLAMAYDI (u yerda erta qaytadi).
+		# Natijada kamera mashinaga kirgandagi yo'nalishda
+		# MUZLADI: mashina qaysi tomonga burilsa ham o'yinchi
+		# eski tomonga qaragan, sichqoncha esa umuman ishlamasdi.
+		global_basis = seat_target.global_basis \
+			.rotated(Vector3.UP, look_yaw) \
+			.rotated(Vector3.RIGHT, look_pitch)
 		_bob_blend = 0.0
 		_landing_offset = 0.0
 		_landing_velocity = 0.0

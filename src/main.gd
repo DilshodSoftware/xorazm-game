@@ -155,6 +155,10 @@ func _enter_vehicle(car: Vehicle) -> void:
 	driver.take_control(car, player)
 	if _speedo:
 		_speedo.visible = true
+	# "Mashinaga minish" yozuvi ichkarida kerak emas — o'yinchi
+	# allaqachon mashinada. Aks holda E bosilsa chiqishni
+	# kutayotganini xabar qiladi.
+	_hide_prompt()
 
 
 ## Mashinadan tushadi (F).
@@ -196,17 +200,35 @@ func _process(_delta: float) -> void:
 		_prompt.size = Vector2(size.x, 0)
 		_prompt.position = Vector2(0, size.y - 130)
 	if _speedo != null and _speedo.visible:
-		_speedo.size = Vector2(240, 60)
-		_speedo.position = Vector2(size.x - 256, size.y - 92)
+		# DIQQAT: balandlik 60 px yetarli emasdi — "km/soat" birinchi
+		# satr ekrandan tashqariga chiqib ketardi (rasmda ko'rinadi).
+		# Ikkita satr: son + birlik.
+		_speedo.size = Vector2(240, 78)
+		_speedo.position = Vector2(size.x - 256, size.y - 108)
 
 
+## [param text] — ko'rsatiladigan yozuv.
+##
+## DIQQAT: mashina ichida yozuv KO'RSATILMAYDI. Sabab: mashinaga
+## kirgach `PlayerCar` o'yinchi tugunini har kadrda mashinaga
+## ko'chiradi, shuning uchun mashinaning `Area3D` si qayta
+## `body_entered` hodisasi beradi va yozuv qaytadan paydo bo'ladi
+## (rasmda shunday chiqdi). O'yinchi allaqachon mashinada —
+## "Mashinaga minish" yozuvi ma'nosiz.
 func _on_interact_shown(text: String) -> void:
+	if driver != null and driver.vehicle != null:
+		return
 	if _prompt != null:
 		_prompt.text = text
 		_prompt.visible = true
 
 
 func _on_interact_hidden() -> void:
+	_hide_prompt()
+
+
+## Muloqot yozuvini yashiradi.
+func _hide_prompt() -> void:
 	if _prompt != null:
 		_prompt.visible = false
 
@@ -400,6 +422,9 @@ func _parse_cli() -> void:
 			vehicle_test.host = self
 			add_child(vehicle_test)
 			return
+		if args[i] == "--seat" and i + 1 < args.size():
+			_capture_seat(args[i + 1])
+			return
 		if args[i] == "--test-audio":
 			var audio_test := AudioSelfTest.new()
 			add_child(audio_test)
@@ -544,6 +569,29 @@ func _capture_door(path: String, state: String) -> void:
 	await _settle(CAPTURE_FRAMES)
 	player.teleport(spot, yaw, -8.0)
 	await _settle(3)
+	_save_shot(path)
+
+
+## MASHINA ICHIDAN surat — haydash rejimidagi kamerani tekshirish.
+##
+##     godot --path . -- --seat /tmp/mashina.png
+##
+## NIMA UCHUN BU VOSITA KERAK
+## `attach_seat` ning offseti va kameraning burilishi ko'z bilan
+## tekshirilishi shart: `Vector3.ZERO` berilsa kamera mashinaning
+## POL OSTIDA qoladi (bu xato bo'lgan), `global_basis` yangilanmasa
+## kamera kirgandagi yo'nalishda muzlab qoladi (bu ham bo'lgan).
+## Ikkalasini ham son emas, rasm orqali ko'rsatadi.
+##
+## [param drive] — "0" yoki bo'lmasa: kirmasdan turadi (tashqi
+## ko'rinish). Boshqa qiymat: gaz berib haydaydi.
+func _capture_seat(path: String) -> void:
+	# Avval mashina joyiga tushsin (g'ildorak osilish qamrab olsin),
+	# keyin o'yinchi kirsin — aks holda kamera havoda ko'rinadi.
+	await _settle(CAPTURE_FRAMES)
+	if player_vehicle != null:
+		_enter_vehicle(player_vehicle)
+		await _settle(12)
 	_save_shot(path)
 
 

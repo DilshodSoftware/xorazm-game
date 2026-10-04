@@ -244,7 +244,7 @@ var traffic: Traffic = null
 var qoshnilar: Array[Pedestrian] = []
 
 # --- Ichki holat ---
-var _pos := Vector3.ZERO            ## mantiqiy o'rni (global_position emas)
+var _pos := Vector3.ZERO            ## mantiqiy o'rni (dunyo koordinati)
 var _oldinga := Vector2(0.0, -1.0)  ## yurish yo'nalishi (XZ)
 var _yon := Vector2(1.0, 0.0)        ## yo'lning o'ng tomoni (XZ)
 var _yon_joyi := 0.0                 ## joriy yon siljish (m, + = o'ng)
@@ -409,10 +409,15 @@ static func build_parts(spec: Dictionary) -> Dictionary:
 	# Bosh qutisi
 	bosh.add_box(Vector3(0.0, float(a["boyin"]) + float(a["bosh"]) * 0.5, 0.0),
 		Vector3(a["bosh_eni"], a["bosh"], a["bosh_uzunligi"]), teri)
-	# Soch — boshning ustki qismi va orqasi
-	bosh.add_box(Vector3(0.0, float(a["boyin"]) + float(a["bosh"]) * 0.90,
+	# Soch — boshning ustki qismi va orqasi.
+	# DIQQAT: soch qutisi boshning USTIDAN chiqmasin. Markazi
+	# `boyin + bosh*0.86`, balandligi `bosh*0.28` → tepasi aniq
+	# `boyin + bosh` (ya'ni jami balandlik H ga teng). Oldin 0.90/0.34
+	# da bo'lgan: soch 7% yuqoriga chiqib, model balandligi 1 sm
+	# oshib ketardi (sinovda "model 1,796 m, variant 1,780 m" chiqdi).
+	bosh.add_box(Vector3(0.0, float(a["boyin"]) + float(a["bosh"]) * 0.86,
 		float(a["bosh_uzunligi"]) * 0.06),
-		Vector3(a["bosh_eni"] * 1.03, a["bosh"] * 0.34, a["bosh_uzunligi"] * 1.02),
+		Vector3(a["bosh_eni"] * 1.03, a["bosh"] * 0.28, a["bosh_uzunligi"] * 1.02),
 		soch)
 	# Burun — yuzning −Z tomonini ANIQ ko'rsatadi. "Bosh −Z ga
 	# qaragan" degani aynan shundan iborat; sinov shu nuqtani o'lchaydi.
@@ -516,6 +521,13 @@ func _variantni_qollash() -> void:
 
 ## Tugunlarni va modelni quradi.
 func _tuzishni_qurish() -> void:
+	# DIQQAT: `top_level = true` — bu piyoda uchun MAJBURIY.
+	# Piyoda o'zining ko'cha nuqtasini DUNYO koordinatida biladi
+	# (`RoadNetwork`, `Tandirchi` — hammasi global), shuning uchun
+	# ota tugunning o'zgarishiga bog'liq bo'lmasligi kerak.
+	# Yana bir sabab: `global_position` ga qiymat berish Godot 4.7 da
+	# burilishni qayta hisoblaydi (yuqoridagi izoh).
+	top_level = true
 	var a := olchov
 	var qismlar := build_parts(xususiyat)
 
@@ -645,7 +657,14 @@ func _birinchi_qadam() -> void:
 	# murojaat qilish xato bo'ladi. Farq ≤ 0,42 m va bitta kadrda
 	# ko'rinmaydi — keyingi kadrda haqiqiy balandlik qo'yiladi.
 	_pos.y = TerrainGen.height_at(_pos.x, _pos.z)
-	global_position = _pos
+	# DIQQAT: `position`, `global_position` EMAS. Godot 4.7 da
+	# `global_position` ga qiymat berish tugunning BURCHAGINI ham
+	# qayta hisoblaydi: −94,7° bo'lgan yaw birinchi yerga tekish
+	# navbatida −0,4° ga tushadi, ya'ni piyoda butunlay boshqarib
+	# ketadi (sinovda "oldingi tomon −0,96/0,27, harakat 1,22/0,10"
+		# chiqib, −0,94 moslik kelgan). Yuqorida `top_level = true`
+	# qo'yilgani uchun `position` aynan dunyo koordinati.
+	position = _pos
 	_yer_muddati = 0.0     # keyingi fizika kadrida darhol yerni o'lchaydi
 	rotation.y = rad_to_deg(atan2(-_oldinga.x, -_oldinga.y))
 	_muddatlarni_tayinlash()
@@ -722,7 +741,7 @@ func _harakatni_yuritish(delta: float) -> void:
 
 ## Joriy nuqta, yonalish va yon siljishni hisoblaydi.
 ## Bu — piyodaning yagona "yo'l navigatsiyasi" mexanizmi: boshqa
-## hech narsa `global_position` ni to'g'ridan-to'g'ri o'zgartirmaydi.
+## hech narsa tugun transformini to'g'ridan-to'g'ri o'zgartirmaydi.
 func _nuqtasini_topsh() -> void:
 	var nuqta := Vector2.ZERO
 	var yonalish := Vector2(0.0, -1.0)
@@ -847,7 +866,7 @@ func _yerga_tekislash(delta: float) -> void:
 	_yer_muddati = YER_ORALIGI
 	var dunyo := get_world_3d()
 	if dunyo == null:
-		global_position = _pos
+		position = _pos
 		return
 	# Nishat yuqoridan 3 m dan boshlanadi: piyoda ostidagi ko'prik yoki
 	# churt to'sib qo'ymasligi kerak (mahalla ko'chalarida bunday
@@ -855,7 +874,7 @@ func _yerga_tekislash(delta: float) -> void:
 	var yer: float = TerrainGen.ground_height(dunyo.direct_space_state,
 		_pos.x, _pos.z, _pos.y + 3.0)
 	_pos.y = yer
-	global_position = _pos
+	position = _pos     # global_position EMAS — yuqoridagi izoh
 
 
 ## Qo'shnilarni surish — o'zaro kirmaslik.
@@ -1266,7 +1285,15 @@ func mesh_soni() -> int:
 	return find_children("*", "MeshInstance3D", true, false).size()
 
 
-## Yuzaga burilgan yonalish (global, vektor) — sinov uchun.
-## −Z qoidasi bo'yicha modelning oldingi tomoni shu vektor.
+## Yuzaga burilgan yonalish (vektor) — sinov va diagnostika uchun.
+##
+## NIMA UCHUN `basis` emas, `rotation.y` dan hisoblanadi
+## Model qoidasi: yaw = θ bo'lganda oldingi tomon = (−sin θ, 0, −cos θ).
+## Bu formulani to'g'ridan-to'g'ri qo'llash (a) yo'nalish qoidasini kodda
+## ko'rsatadi va (b) `global_basis` kabi kechiktirilgan hisoblanadigan
+## qiymatga bog'liq bo'lmaydi. Sinov muhitida (`--script`) `basis`
+## o'qilishi nosahif natija berdi: yaw −95° bo'lganda `basis.z` boshqa
+## burchakni ko'rsatgan edi.
 func oldingi_tomoni() -> Vector3:
-	return -global_basis.z
+	var rad := deg_to_rad(rotation.y)
+	return Vector3(-sin(rad), 0.0, -cos(rad))

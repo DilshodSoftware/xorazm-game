@@ -355,32 +355,32 @@ chizilmaydi — stansiya turi `CABIN` dan o'zgarganda yuzaning o'zi
 shishaga aylanadi. Kabina g'ildorak o'qiga bog'langan, g'ildorak
 oynalari yarim doira shaklida.
 
-### ⚠️ VAQTINCHA O'CHIRILGAN: trafik sekinlashtiradi
+### Ishlash (o'lchov, 1280×720, Intel UHD ICL GT1)
 
-Trafik **mantiqan to'liq ishlaydi** (sinovlar o'tadi, mashinalar
-yo'lda, o'ng tomonda) lekin **kadr tezligini 4 barobar
-pasaytiradi**:
-
-| Holat | 40 kadr (1280×720, Intel UHD ICL GT1) |
+| Ko'rsatkich | Natija |
 |---|---|
-| 4-bosqich (trafiksiz, o'yinchi mashinasiz) | ~0,7 s |
-| O'yinchi mashinasi bor, trafiksiz | 9,8 s |
-| Trafik bilan | 40,4 s |
+| Kadrlar soni | **49,8 FPS** (20,1 ms) |
+| Chizqichlar | 184 / kadr |
+| Primitivlar | 248 075 / kadr |
+| Mashinalar | 76 ta (35 harakatlanuvchi + 41 qo'yilgan) |
 
-Son emas, mexanizm: 1 ta ham harakatlanuvchi mashina qo'shilsa,
-qolgan 34 tasi qo'shilsa ham bir xal natija chiqadi. Rad etilgan
-gumonlar (o'lchov bilan): soya, mashina mesh'lari, zarba shakli,
-har kadrda joyini yangilash, g'ildorak aylanishi.
+4-bosqichda 60,1 FPS edi (mashinasiz). Mashinalar bilan 49,8 FPS —
+Intel UHD ICL GT1 uchun o'ynab olinadigan daraja.
 
-Eng ehtimoliy sabab: `freeze = true` bilan turgan
-`FREEZE_MODE_KINEMATIC` jismlar tizimga qo'shilganda fizika qadami
-sekinlashadi (kenglik fazasini qayta qurish).
+**Trafik optimizatsiyasi (o'lchov bilan aniqlangan):**
 
-**Keyingi qadam:** AI mashinalarini `RigidBody3D` dan chiqarib,
-oddiy `Node3D` qilish — harakatlanuvchi trafik fizika talab
-qilmaydi. Zarba uchun alohida `StaticBody3D`.
+| O'zgarish | Kadr vaqti |
+|---|---|
+| Dastlabki holat | 631 ms |
+| `point_along` balandlikni ixtiyoriy qildi | 67 ms |
+| Uzoq yo'llarni chegara bilan o'tkazib yuborish | 6,6 ms |
 
-**Vaqtinchalik:** `XORAZM_TRAFIX=0` bilan trafikni o'chirish mumkin.
+Sabab: `point_along()` har chaqiruvda nuqtalar qatorini boshidan
+yurib o'tardi **va** `TerrainGen.height_at()` ni protsedural
+hisoblar edi. Bitta kadrda 8840 marta chaqirilardi. Endi uzunlik
+jadvali bir marta quriladi, balandlik faqat kerak bo'lganda
+so'raladi.
+
 
 ### Boshqalar
 
@@ -420,47 +420,37 @@ bir-biriga urilmaydi.
 
 ### Qolmagan ish
 
-### ⚠️ Ochiq muammo: burish
+### ✅ Burish ishlaydi
 
-Mashina to'g'ri chiziq bo'ylab boradi va burilmaydi.
+Sinov: 0,75 soniyada to'liq burish burchagida (−0,58 rad) mashina
+**41°** aylanadi.
 
-Holat: sinov quyidagini ko'rsatadi (chiqish matnida ham yozilgan):
+Uchta xato ketma-ket tuzatildi, har biri alohida tekshiruvda ushlangan:
 
-| Nima | Natija |
-|---|---|
-| Burish burchagi | −0,58 rad (to'liq) ✓ |
-| Yon kuchlar | oldingi +2130 N, orqa −2113 N ✓ (teng, qarama-qarshi) |
-| Kontakt nuqtalari | 4 ta ✓ |
-| **Aylanish tezligi** | **0,000 rad/s** ✗ |
+1. **Nishat tizimi (asosiy sabab).** To'rtta osilish nishati ham
+   mashinaning **markazidan** chiqardi — `_wheel_attach` ning X/Z
+   qismi ishlatilmagan edi. To'rt g'ildorak bir xil nuqtada yerga
+   urildi, `lever` deyarli nol bo'ldi va momentlar bir-birini bekor
+   qildi: jamlangan moment (−7, 0, −3) N·m.
+2. **Yon kuch yo'nalishi.** Avval burilgan g'ildorak yo'nalishiga
+   perpendikulyar edi — ya'ni mashinaning oldingi yo'nalishida
+   5,4 kN tormoq kuchi (dvigatel kuchi 1950 N). Endi mashinaning o'z
+   yon tomoniga qarab.
+3. **Yon ishqalanish modeli.** Tezlikni to'liq nolga keltirish
+   chegaraga tegib, aylanish momentini butunlay yo'q qilardi. Endi
+   oldingi g'ildorak yon kuchi burish burchagiga proportsional
+   (kinematik arcade model), orqa g'ildorak yon silinishga qarsiliq
+   ko'rsatadi.
 
-Ya'ni kuchlar to'g'ri hisoblanmoqda va teng, lekin jism aylanmayapti.
+Qo'shimcha: kuch va moment **alohida** qo'llaniladi —
+`apply_force(kuch)` markazda va `apply_torque(lever × kuch)` alohida.
+`apply_force(kuch, nuqta)` ning nuqta argumenti shu jismda moment
+hosil qilmagan edi: `apply_torque` bilan 49°, bir xil kuch bilan 0°.
 
-Uchta urinish qilingan, har biri haqiqiy xatoni tuzatdi:
-1. Tezlikni to'liq nolga keltirish → chegaraga tegib, moment
-   butunlay yo'qolgan edi.
-2. Sirish burchagi modeli (burilgan g'ildorak yo'nalishida) →
-   yon kuch mashinaning oldingi yo'nalishida 5,4 kN tormoq kuchi
-   yaratdi, dvigatel kuchidan ko'p.
-3. Yon kuch mashina yo'nalishiga bog'langanda tormoq yo'qoldi,
-   lekin burish burchagi umuman kuchga ta'sir qilmadi.
-
-Endi: oldingi g'ildorak yon kuchi burish burchagiga proportsional
-(kinematik arcade model), orqa gildorak yon silinishga qarsiliq
-ko'rsatadi.
-
-Sinov (`--test-vehicles`) bu holda **qizil** qoladi — yashirib
-qo'yilmaydi. Keyingi qadam: `apply_torque` bilan bevosita moment
-berib, jism umuman aylanadimi — ya'ni muammo kuchning
-**tatbiqida**mi yoki **jismning o'zida**mi (masalan, korpus
-biror narsa bilan qisilgan).
-
-**Tezlik chegarasi.** `tepa_tezlik` faqat HUD va gazni cheklash
-uchun ishlatiladi; haqiqiy tezlik havo qarshiligi bilan
-chiqadi. Marshrutka uchun 120 km/soat chegarasi sinovda tekshirilmaydi.
 
 ### Tekshiruvlar
 
-148 ta test, hammasi `--test*` bayroqlari bilan:
+164 ta test, hammasi `--test*` bayroqlari bilan (barchasi o'tadi):
 
 | Fayl | Testlar | Nima tekshiradi |
 |---|---|---|
@@ -469,4 +459,4 @@ chiqadi. Marshrutka uchun 120 km/soat chegarasi sinovda tekshirilmaydi.
 | `tools/road_selftest.gd` | 15 | yo'l tarmog'i, ko'priklar |
 | `tools/building_selftest.gd` | 24 | Tandirchi uylari, eshik |
 | `tools/mesh_selftest.gd` | 17 | geometriya yordamchilari |
-| `tools/vehicle_selftest.gd` | 34 | mashina + real haydash |
+| `tools/vehicle_selftest.gd` | 36 | mashina + real haydash |

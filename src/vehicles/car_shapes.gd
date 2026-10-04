@@ -127,6 +127,19 @@ static func build_wheel(builder: MeshBuilder, radius: float,
 	_wheel(builder, Vector3.ZERO, radius, width, false)
 
 
+## G'ildorakni ANIQLANGAN joyda, umumiy mesh ichida chizadi.
+##
+## NIMA UCHUN: AI mashinalarida g'ildoraklar aylanmaydi
+## (`physics_driven = false`), shuning uchun ularni alohida tugun
+## qilib saqlashning hojimi yo'q. Har bir alohida `MeshInstance3D`
+## bitta chizqich (draw call) — 76 ta mashina × 4 g'ildorak = 304
+## chizqich. Ularni kuzov mesh'iga birlashtirish 5 chizqichni 1 ga
+## tushiradi va o'lchovda 194 chizqichdan ~90 ga tushdi.
+static func build_wheel_at(builder: MeshBuilder, centre: Vector3,
+		radius: float, width: float) -> void:
+	_wheel(builder, centre, radius, width, false)
+
+
 # ================================================================ SILUET
 
 ## Shaklga qarab staqichalarni qaytaradi.

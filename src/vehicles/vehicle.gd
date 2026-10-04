@@ -220,6 +220,14 @@ func _build() -> void:
 static var _shared_body_material: StandardMaterial3D = null
 
 
+## Yuk ostida prujinaning statik siqilishi, m.
+##
+## Ko'rinadigan g'ildorak shu miqdorda chizilishi SHART, aks holda
+## mashina yerga tegmaydi yoki botib qoladi: `m·g/4 / qattiqlik`.
+static func _wheel_sag(spec: Dictionary) -> float:
+	return float(spec["massa"]) * 9.8 / 4.0 / SUSPENSION_STIFFNESS
+
+
 ## Kuzov geometriyasini umumiy material bilan yig'adi.
 ##
 ## DIQQAT: bu alohida funksiya, chunki `MeshBuilder.commit()` har
@@ -251,6 +259,22 @@ static func _build_shared_body(parent: Node3D, spec: Dictionary,
 	#
 	# Yechim: bir xil model + bir xil rang bitta mesh bo'ladi.
 	# 76 ta mashina 5 model × 5 rang = ~25 ta qurish.
+	# G'ildorak joylari — statik kuzov ichida chiziladi.
+	# Boshlang'ich nuqta g'ildorak O'QIDA (fizikada to'g'ri),
+	# ko'rinadigan g'ildorak esa statik osilish hisobiga
+	# (`sag - SUSPENSION_FREE`) pastroqda chiziladi.
+	var wr: float = float(spec["radius"])
+	var ww: float = float(spec["en_kenglik"])
+	var wb: float = float(spec["gildorak"]) * 0.5
+	var wt: float = float(spec["iz"]) * 0.5
+	var wdy: float = wr + _wheel_sag(spec) - SUSPENSION_FREE
+	var i := Vector3(-wt, wdy, -wb)
+	var j := Vector3(wt, wdy, -wb)
+	var k := Vector3(-wt, wdy, wb)
+	var l := Vector3(wt, wdy, wb)
+	var radius := wr
+	var width := ww
+
 	var key := "%s|%s" % [spec["kalit"], colour.to_html(false)]
 	var mesh: Mesh = null
 	if _body_cache.has(key):
@@ -259,6 +283,14 @@ static func _build_shared_body(parent: Node3D, spec: Dictionary,
 		var builder := MeshBuilder.new()
 		builder.want_collision = false
 		CarShapes.build(builder, spec, Vector3.ZERO, colour, false)
+		# AI mashinasining g'ildoraklari KUZOV MESH'I ichiga
+			# chiziladi (ko'rish uchun o'zgartirish mumkin emas —
+			# ular kinematik, `place_on_road` faqat butun mashinani
+		# ko'chiradi). Bu 5 ta chizqichni 1 ga tushiradi.
+		CarShapes.build_wheel_at(builder, i, radius, width)
+		CarShapes.build_wheel_at(builder, j, radius, width)
+		CarShapes.build_wheel_at(builder, k, radius, width)
+		CarShapes.build_wheel_at(builder, l, radius, width)
 		if builder.is_empty():
 			push_error("Mashina kuzovi bo'sh qoldi: %s" % spec["kalit"])
 			return
@@ -342,24 +374,36 @@ func _build_wheels() -> void:
 	# miqdorda g'ildorak markazi ko'tariladi. Ko'rinadigan
 	# g'ildorak shu statik holatda chizilishi SHART, aks holda
 	# mashina yerga tegmaydi yoki botib qoladi.
-	var sag: float = float(spec["massa"]) * 9.8 / 4.0 / SUSPENSION_STIFFNESS
-	var mesh := _wheel_visual_mesh()
+	var sag: float = _wheel_sag(spec)
 
+	# Osilish nuqtalari har doim to'ldiriladi — ular FIZIKA uchun
+	# kerak (nishat, moment). AI mashinalarida ham kerak, chunki
+	# `place_on_road` shularni ishlatadi.
 	for front: bool in [true, false]:
 		for side: float in [-1.0, 1.0]:
 			# X = yon tomon, Z = oldingi (−Z)
 			_wheel_attach.append(Vector3(side * track, attach_y,
 				-base if front else base))
-			var node := MeshInstance3D.new()
-			node.name = "Gildorak_%s_%s" % [
-				"old" if front else "orqa", "chap" if side < 0.0 else "ong"]
-			node.mesh = mesh
-			# Silindrning ekseni X — mesh allaqon shunday chizilgan
-			node.position = _wheel_attach[_wheel_attach.size() - 1] \
-				+ Vector3(0.0, sag - SUSPENSION_FREE, 0.0)
-			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(node)
-			_wheel_visual.append(node)
+
+	# DIQQAT: ko'rinadigan g'ildorak tugunlari faqat O'YINCHI
+	# mashinasida qilinadi. AI mashinalarida ular kuzov mesh'i ichida
+	# chizilgan (`_build_shared_body`) va aylanmaydi — ular
+	# kinematik. Sabab: har bir tugun bitta chizqich; 76 ta AI
+	# mashinasida 4 tadan = 304 chizqich, o'rniga 76 ta.
+	if not physics_driven:
+		return
+
+	var mesh := _wheel_visual_mesh()
+	for slot in _wheel_attach.size():
+		var node := MeshInstance3D.new()
+		node.name = "Gildorak_%d" % slot
+		node.mesh = mesh
+		# Silindrning ekseni X — mesh allaqon shunday chizilgan
+		node.position = _wheel_attach[slot] \
+			+ Vector3(0.0, sag - SUSPENSION_FREE, 0.0)
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(node)
+		_wheel_visual.append(node)
 
 
 ## Bitta g'ildorak mesh'i — to'rt g'ildorak ham, hamma mashinalar ham

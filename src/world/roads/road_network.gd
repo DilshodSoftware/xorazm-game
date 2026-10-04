@@ -546,6 +546,79 @@ static func is_over_water(x: float, z: float) -> bool:
 	return TerrainGen.is_submerged(x, z)
 
 
+## Yo'lda, boshlang'ich nuqtadan `along` masofa yurib, qayerda
+## turganini topadi.
+##
+## NIMA UCHUN BU KERAK
+## `nearest_road_point` "shu nuqtaga yaqin yo'l qayerda" savoliga
+## javob beradi — u kameraga yoki AI ga YO'L TOPISH uchun. Lekin
+## mashina yurish uchun boshqa narsa kerak: "shu yo'lda 340 m
+## yurib, qayerda bo'laman". Qo'lda har kadrda eng yaqin nuqtani
+## qayta qidirish (va har safar 34 ta yo'lni tekshirish) sekin va
+## noto'g'ri — mashina yo'lning qarama-qarshi tomoniga "ko'chib"
+## ketishi mumkin.
+##
+## [param along] — yo'l boshidan o'tgan masofa, m. Chiqib ketsa
+## yo'lning boshiga qaytadi (tomas halqasi).
+##
+## Qaytaradi: {"nuqta": Vector2, "yo'nalish": Vector2, "orasidagi":
+## float, "chegara": bool, "yo'l": String, "tur": int, "y": float}
+static func point_along(index: int, along: float) -> Dictionary:
+	_ensure()
+	var fallback := {
+		"nuqta": Vector2.ZERO, "yo'nalish": Vector2.RIGHT,
+		"orasidagi": 0.0, "chegara": false, "yo'l": "", "tur": 0,
+		"y": 0.0, "uzunlik": 0.0,
+	}
+	if index < 0 or index >= _roads.size():
+		return fallback
+	var road: Dictionary = _roads[index]
+	var points: PackedVector2Array = road["nuqta"]
+	if points.size() < 2:
+		return fallback
+
+	var total := 0.0
+	for i in range(points.size() - 1):
+		total += points[i].distance_to(points[i + 1])
+	if total < 0.001:
+		return fallback
+	# Chekishdan tashqariga chiqsa — boshiga qaytadi
+	var wrapped: float = fposmod(along, total)
+	var walked := 0.0
+	for i in range(points.size() - 1):
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[i + 1]
+		var ab: Vector2 = b - a
+		var length: float = ab.length()
+		if walked + length >= wrapped:
+			var t: float = (wrapped - walked) / maxf(length, 0.0001)
+			var spot: Vector2 = a + ab * t
+			return {
+				"nuqta": spot,
+				"yo'nalish": ab / maxf(length, 0.0001),
+				"orasidagi": wrapped,
+				"chegara": i > 0 and i < points.size() - 2,
+				"yo'l": road["nom"],
+				"tur": int(road["tur"]),
+				"y": TerrainGen.height_at(spot.x, spot.y),
+				"uzunlik": total,
+			}
+		walked += length
+	return fallback
+
+
+## Yo'ldagi nuqtalar (kinematik mashina uchun).
+static func road_length(index: int) -> float:
+	_ensure()
+	if index < 0 or index >= _roads.size():
+		return 0.0
+	var points: PackedVector2Array = _roads[index]["nuqta"]
+	var total := 0.0
+	for i in range(points.size() - 1):
+		total += points[i].distance_to(points[i + 1])
+	return total
+
+
 ## Nuqtaga eng yaqin yo'l nuqtasi. AI mashinalari shundan foydalanadi
 ## (yo'lni topish, chetga chiqmaslik), surat vositasi ham.
 ##

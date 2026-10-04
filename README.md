@@ -33,8 +33,14 @@ loyiha bitta fayl bilan ishga tushadi.
 # Yo'l tarmog'ining tekshiruvi (15 ta test)
 ~/Applications/godot --headless --path . -- --test-roads
 
-# Tandirchi binolarining tekshiruvi (14 ta test)
+# Tandirchi binolarining tekshiruvi (24 ta test)
 ~/Applications/godot --headless --path . -- --test-buildings
+
+# Geometriya yordamchilarining tekshiruvi (17 ta test)
+~/Applications/godot --headless --path . -- --test-mesh
+
+# Mashina tizimining tekshiruvi (34 ta test, jumladan REAL haydash)
+~/Applications/godot --headless --path . -- --test-vehicles
 
 # Butun orolning tekis rasm xaritasi (GPU'siz)
 ~/Applications/godot --headless --path . -- --terrainmap /tmp/map.png
@@ -55,6 +61,10 @@ loyiha bitta fayl bilan ishga tushadi.
 
 # Bitta uyni qurib, ko'chadan ko'rish (uyni tuzatish uchun)
 ~/Applications/godot --path . -- --testhouse /tmp/uy.png
+
+# Mashina modellarini ko'rik (siluetni tekshirish uchun)
+~/Applications/godot --path . -- --cars /tmp/mashinalar.png      # qator
+~/Applications/godot --path . -- --car spark /tmp/spark.png     # bitta
 
 # Uy ichini shimola ko'rib tekshirish (mebbel joylashuvi)
 ~/Applications/godot --path . -- --inspect /tmp/ichi.png
@@ -126,7 +136,7 @@ hammasi `ArrayMesh` va `MultiMesh` orqali generatsiya qilinadi, ranglar
 | 2 | Xorazm relyefi, chunk streaming, Amudaryo, sho'r ko'llar | ✅ |
 | 3 | Yo'llar: halqa, radial, shahar to'ri, ko'pik, ko'prik | ✅ |
 | 4 | Tandirchi mahallasi va o'yinchi uyining ichi | ✅ |
-| 5 | O'zbek mashinalari + haydash fizikasi | ⬜ |
+| 5 | Mashinalar (o'zbek modellari), haydash fizikasi, ko'cha harakati | 🟡 qisman |
 | 6 | AI yo'l harakati, marshrutka, piyodalar | ⬜ |
 | 7 | Urganch: baza, Al-Xorazmiy, Avesto bog'i, stansiya | ⬜ |
 | 8 | Tabiat: to'qog'ay, paxta, qamish | ⬜ |
@@ -320,3 +330,91 @@ o'zgartirmoq uchun `hud.samar` kalitini tahrirlang. Kodga tegilmaydi.
 > **Muhim:** tarjima metodi `tr` emas, `txt` — `Object.tr()` allaqachon
 > mavjud (Godot'ning o'z funksiyasi) va override qilinishi butun
 > loyihani buzadi.
+
+## 5-bosqich: mashinalar — holat
+
+### Tayyor
+
+**Modellar (5 ta, hammasi 1:1 haqiqiy o'lchamda)**
+
+| Model | Uzunlik × kenglik × balandlik | Shakl |
+|---|---|---|
+| Chevrolet Spark | 3,64 × 1,59 × 1,48 m | xatchop |
+| Daewoo Nexia | 4,19 × 1,64 × 1,38 m | sedan |
+| Chevrolet Cobalt | 4,50 × 1,73 × 1,45 m | sedan |
+| Chevrolet Aptiya | 4,50 × 1,73 × 1,45 m | xatchop |
+| Marshrutka | 5,20 × 2,00 × 2,30 m | miktobus |
+
+Avval xotiraga olish uchun navbatga turish kerak bo'lgan mashina "Spak"
+degan nom chiqaradi — shuning uchun birinchi o'rinda u turadi.
+Marshrutka har doim oq va peshonasida yo'l belgisi bilan.
+
+Kuzov "staqichalar" usuli bilan chiziladi: uzunlik bo'ylab 8
+burchakli kesimlar qatori. Yon oyna va oldingi oyna alohida
+chizilmaydi — stansiya turi `CABIN` dan o'zgarganda yuzaning o'zi
+shishaga aylanadi. Kabina g'ildorak o'qiga bog'langan, g'ildorak
+oynalari yarim doira shaklida.
+
+**Ko'cha harakati:** 34 ta harakatlanuvchi mashina (magistral,
+shahar ko'chasi, qishloq yo'llari) + 41 ta qo'yilgan mashina
+(Tandirchi ko'chalari va Urganch ko'chasi). O'ngdan chapga, yo'ldan
+1,7 m chetda. AI mashinalari kinematik — arzon, to'xtamaydi va
+bir-biriga urilmaydi.
+
+**O'yinchi mashinasi:** uy oldiga, Kosiblar ko'chasiga qo'yiladi
+(odatda Nexia). **F** — minish/chiqish, **E** — ham minish.
+**W/S** — gaz, **A/D** — burish, **Space** — qo'lda tormoz,
+**H** — qo'ng'iroq. Tezlik o'lchagi o'ng pastda.
+
+### Tuzatilgan xatolar (jami 8 ta, hammasi sinovda ushlangan)
+
+1. `apply_force(kuch, nuqta)` — argumentlar teskari yozilgan edi.
+   Gaz berilgan mashina 0 km/soatda qolardi.
+2. Nishat osilish nuqtasidan boshlanardi va korpusning zarba
+   qutisining ichiga tushardi — mashinaning o'ziga urilib,
+   prujina kuchini YERGA bosib, o'z korpusida turib qolardi.
+3. `_integrate_forces` ichida nishat chaqirilganda jismning
+   `exclude` ro'yxati ishlamaydi — nishat `_physics_process` ga
+   ko'chirildi.
+4. Mashinalar +X = oldinga chizilgan edi, lekin Godot (va o'yin
+   kodi) −Z = oldinga deb hisoblaydi. Mashina ko'chaga
+   perpendikular yotib, uyning ichiga botib qolardi.
+5. Korpus zarba qutisi X/Z o'qlari teskari edi — quti ko'cha
+   bo'ylab emas, ko'chaning USTIDAN kezib o'tardi.
+6. Joylashtirish balandligi `TerrainGen.height_at()` dan olinardi,
+   lekin ko'rinadigan chunk meshi undan 0,42 m farq qiladi.
+   Yangi `TerrainGen.ground_height()` — nishat orqali.
+7. `RigidBody3D` uxlab qolganda gravitatsiya ham to'xtaydi —
+   `can_sleep = false`.
+8. Marshrutka peshona belgisi oldingi stansiyaning balandligidan
+   olinardi (kapot tepasi) — shuning uchun belgi suzib yurardi.
+
+### Qolmagan ish
+
+**Burish fizikasi.** Mashina to'g'ri chiziq bo'ylab boradi va
+burilmaydi. Sinovda 0,5 soniya to'liq burish burchagida (−0,58 rad)
+burchak 0° ga o'zgaradi. Burish buyurmasi g'ildoraklarga yetadi
+(`steer_now` = −0,58, tekshiruv o'tadi), yon ishqalanish kuchi
+hisoblanadi, lekin aylanish momenti hosil bo'lmaydi.
+
+Sinov (`--test-vehicles`) bu holda **qizil** bo'lib qoladi —
+yashirib qo'yish emas. Ochiq ish: g'ildorak tarmog'i balandligi va
+og'irlik markazining Z taqsimotini tekshirish, `apply_torque` bilan
+aylanish momentini qo'shish.
+
+**Tezlik chegarasi.** `tepa_tezlik` faqat HUD va gazni cheklash
+uchun ishlatiladi; haqiqiy tezlik havo qarshiligi bilan
+chiqadi. Marshrutka uchun 120 km/soat chegarasi sinovda tekshirilmaydi.
+
+### Tekshiruvlar
+
+148 ta test, hammasi `--test*` bayroqlari bilan:
+
+| Fayl | Testlar | Nima tekshiradi |
+|---|---|---|
+| `tools/player_selftest.gd` | 27 | o'yinchi fizikasi, kamera |
+| `tools/terrain_selftest.gd` | 45 | relyef, suv, tekislik |
+| `tools/road_selftest.gd` | 15 | yo'l tarmog'i, ko'priklar |
+| `tools/building_selftest.gd` | 24 | Tandirchi uylari, eshik |
+| `tools/mesh_selftest.gd` | 17 | geometriya yordamchilari |
+| `tools/vehicle_selftest.gd` | 34 | mashina + real haydash |

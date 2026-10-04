@@ -10,7 +10,19 @@ extends RefCounted
 ## Kesimlar orasidagi yuzalar `add_face` bilan chiziladi, shuning uchun
 ## burilish hech qachon xato bo'lmaydi.
 ##
-## Kesim 8 burchakli (Z, Y, toraytirish) da:
+## YO'NALISH QOIDASI (majburiy)
+## Oldingi tomon −Z da. Bu Godot ning o'z qoidasi: kamera −Z ga
+## qaraydi, `Node3D.forward()` shunga teng, ko'pchilik namunasi shu
+## yo'nalishda chiziladi.
+##
+## DIQQAT: avval modeller +X da chizilgan edi. Natijada mashina
+## "oldinga" qaraganda orqaga burilib, ko'chaga PERPENDIKULAR
+## yotib qolardi — ko'chadagi uyning ichiga botib, zarba qutisi
+## uni shift ustiga chiqarib yuborardi (sinovda: yerdan 0,82 m
+## ko'tarilib, gaz berilganda ham qo'zg'almagan). Yo'nalish
+## -Z ga ko'chirildi.
+##
+## Kesim 8 burchakli (X, Y, toraytirish) da:
 ##
 ##       4 ───── 5            ← shift
 ##      ╱          ╲
@@ -30,6 +42,9 @@ extends RefCounted
 ## qat'iy burchaklar, tekis yuzalar. Staqicha usuli yon profile
 ## silliq chiqadi — bu 1.5 m masofada seziladi va oddiy o'yinchi
 ## shunchaki "mashina" deb taniydi.
+##
+## DIQQAT: halqaning birinchi komponenti endi X (kenglik), oldin
+## Z edi — chunki uzunlik o'qi endi −Z.
 ##
 ## Uchinchi komponent — toraytirish og'irligi: 1 bo'lsa, stansiyaning
 ## `tor` qiymati qo'llaniladi. Faqat shift burchaklarida 1 — ya'ni
@@ -162,7 +177,8 @@ static func _scaled(stations: Array[Array], length: float,
 		var headroom: float = height - floor_y
 		out.append({
 			"u": float(row[0]),
-			"x": (float(row[0]) - 0.5) * length,
+			# u=0 → orqa (+Z), u=1 → oldingi (−Z)
+			"x": (0.5 - float(row[0])) * length,
 			"past": floor_y,
 			"beltiq": floor_y + float(row[2]) * headroom,
 			"shift": floor_y + float(row[3]) * headroom,
@@ -211,7 +227,7 @@ static func _add_wheel_openings(stations: Array[Dictionary], axle_u: float,
 			var arch: float = sqrt(maxf(1.0 - d * d, 0.0))
 			out.append({
 				"u": u,
-				"x": (u - 0.5) * length,
+				"x": (0.5 - u) * length,
 				"past": lerpf(sill, peak, arch),
 				"beltiq": lerpf(float(station["beltiq"]),
 					float(next_station["beltiq"]), t),
@@ -332,9 +348,9 @@ static func _minibus(spec: Dictionary) -> Array[Dictionary]:
 static func _point(station: Dictionary, ring: Vector3, half_width: float,
 		origin: Vector3) -> Vector3:
 	var width: float = half_width * lerpf(1.0, float(station["tor"]), ring.z)
-	return origin + Vector3(float(station["x"]),
+	return origin + Vector3(width * ring.x,
 		lerpf(float(station["past"]), float(station["shift"]), ring.y),
-		width * ring.x)
+		float(station["x"]))
 
 
 ## Kuzov qobig'i: stansiyalarni bog'lab yuzalarni chizadi.
@@ -369,9 +385,13 @@ static func _shell(builder: MeshBuilder, stations: Array[Dictionary],
 			# uning oldinga-orqaga qarab qaysarishini belgilaydi.
 			var edge: Vector2 = Vector2(RING[k2].x - RING[k].x,
 				RING[k2].y - RING[k].y)
-			var slope: float = (float(a["shift"]) - float(b["shift"])) \
+			# Uzunlik o'qi −Z bo'lgani uchun tiklik belgisi ham
+			# o'zgaradi: stansiya Z bo'ylab kamayib boradi
+			var slope: float = (float(b["shift"]) - float(a["shift"])) \
 				* (RING[k].y + RING[k2].y) * 0.5
-			var outward := Vector3(slope, -edge.x, edge.y)
+			# Kesim (X, Y) da → tashqi yo'nalish (X, Y) da
+			# = (dy, −dx), uzunlik bo'yicha tiklik Z ga qo'shiladi
+			var outward := Vector3(edge.y, -edge.x, slope)
 			var shade: Color = colour
 			if k == 0:
 				shade = UNDER                      # pastki qirqliq
@@ -403,13 +423,17 @@ static func _shell(builder: MeshBuilder, stations: Array[Dictionary],
 ## esa faqat oldingi buffer devori.
 static func _cap(builder: MeshBuilder, points: Array[Vector3],
 		origin: Vector3, station: Dictionary, colour: Color) -> void:
+	# DIQQAT: uzunlik o'qi Z (−Z oldingi). Bu yerda eskirgan X
+	# qolsa, yopish nuqtasi ko'chada turadi va butun kuzov
+	# "kengligi" mashina uzunligiga teng bo'lib chiqadi.
 	var centre := Vector3(
-		float(station["x"]),
+		0.0,
 		(float(station["past"]) + float(station["shift"])) * 0.5,
-		0.0)
+		float(station["x"]))
 	var tip := origin + centre
+	# Oldingi tomon −Z
 	var outward := Vector3(
-		1.0 if float(station["x"]) > 0.0 else -1.0, 0.0, 0.0)
+		0.0, 0.0, -1.0 if float(station["x"]) < 0.0 else 1.0)
 	for i in points.size():
 		var j: int = (i + 1) % points.size()
 		var normal := (points[j] - tip).cross(points[i] - tip)
@@ -427,16 +451,17 @@ static func _bumpers(builder: MeshBuilder, spec: Dictionary,
 		collision: bool) -> void:
 	for tail: bool in [false, true]:
 		var station: Dictionary = stations[0] if tail else stations[stations.size() - 1]
-		var sign_x: float = -1.0 if tail else 1.0
-		var x: float = float(station["x"])
+		# `z` — oldingi tomon (−Z) qarab qaraganda manfiy
+		var z: float = float(station["x"])
+		var sign_z: float = 1.0 if tail else -1.0
 		var low: float = float(station["past"])
 		var high: float = float(station["past"]) + 0.30
 		var depth: float = 0.16
 		var width: float = half * 1.9
-		var centre := origin + Vector3(x + sign_x * depth * 0.4,
-			(low + high) * 0.5, 0.0)
+		var centre := origin + Vector3(0.0, (low + high) * 0.5,
+			z + sign_z * depth * 0.4)
 		builder.add_box(centre,
-			Vector3(depth, high - low, width), TRIM, 0.0, collision)
+			Vector3(width, high - low, depth), TRIM, 0.0, collision)
 
 
 ## Chiroqlar: oldinda fara, orqada qizil signal, yonlarda ko'rsatkich.
@@ -451,34 +476,34 @@ static func _lights(builder: MeshBuilder, spec: Dictionary,
 
 	# --- Oldingi faralar ---
 	for side: float in [-1.0, 1.0]:
-		var lamp := origin + Vector3(nose_x + 0.055, lamp_y, side * half * 0.62)
-		builder.add_box(lamp, Vector3(0.10, 0.17, 0.34), LAMP, 0.0, false)
+		var lamp := origin + Vector3(side * half * 0.62, lamp_y,
+			nose_x - 0.055)
+		builder.add_box(lamp, Vector3(0.34, 0.17, 0.10), LAMP, 0.0, false)
 	# Radish tori — markazda, kundalik kuzovda eng ko'p ko'rinadigan
 	# qora dog'ular
-	var grille_centre := origin + Vector3(nose_x + 0.04, lamp_y - 0.02, 0.0)
-	builder.add_box(grille_centre, Vector3(0.06, 0.15, half * 0.95),
+	var grille_centre := origin + Vector3(0.0, lamp_y - 0.02, nose_x - 0.04)
+	builder.add_box(grille_centre, Vector3(half * 0.95, 0.15, 0.06),
 		GRILLE, 0.0, false)
 
 	# --- Davlat raqami ---
-	var plate := origin + Vector3(nose_x + 0.075, lamp_y - 0.30, 0.0)
-	builder.add_box(plate, Vector3(0.03, 0.12, 0.44), PLATE, 0.0, false)
+	var plate := origin + Vector3(0.0, lamp_y - 0.30, nose_x - 0.075)
+	builder.add_box(plate, Vector3(0.44, 0.12, 0.03), PLATE, 0.0, false)
 
 	# --- Orqa signallar ---
 	for side: float in [-1.0, 1.0]:
-		var lamp := origin + Vector3(tail_x - 0.05, tail_y, side * half * 0.66)
-		builder.add_box(lamp, Vector3(0.09, 0.20, 0.26), LAMP_RED, 0.0, false)
+		var lamp := origin + Vector3(side * half * 0.66, tail_y, tail_x + 0.05)
+		builder.add_box(lamp, Vector3(0.26, 0.20, 0.09), LAMP_RED, 0.0, false)
 		# Yuqorida kichik qizil — marshrutkalar va Spark'lar shunday
-		var high := origin + Vector3(tail_x - 0.10, float(tail["shift"]) - 0.14,
-			side * half * 0.52)
-		builder.add_box(high, Vector3(0.05, 0.09, 0.13), LAMP_DIM, 0.0, false)
+		var high := origin + Vector3(side * half * 0.52,
+			float(tail["shift"]) - 0.14, tail_x + 0.10)
+		builder.add_box(high, Vector3(0.13, 0.09, 0.05), LAMP_DIM, 0.0, false)
 
 	# --- Yon ko'rsatkichlar (kompilyatsiya ustida yon devorda) ---
 	var mid: Dictionary = stations[stations.size() / 2]
 	for side: float in [-1.0, 1.0]:
-		var x: float = float(mid["x"]) + 0.10
-		var lamp := origin + Vector3(x, float(mid["beltiq"]) - 0.14,
-			side * (half * 0.99))
-		builder.add_box(lamp, Vector3(0.13, 0.08, 0.05), LAMP_AMBER, 0.0, false)
+		var lamp := origin + Vector3(side * half * 0.99,
+			float(mid["beltiq"]) - 0.14, float(mid["x"]) - 0.10)
+		builder.add_box(lamp, Vector3(0.05, 0.08, 0.13), LAMP_AMBER, 0.0, false)
 
 
 ## Ko'zgu, ichki detail'lar, oldingi va orqa raqam taxtasi.
@@ -492,18 +517,18 @@ static func _details(builder: MeshBuilder, spec: Dictionary,
 		if int(stations[i]["qism"]) != CarSpecs.Part.NOSE:
 			continue
 		var station: Dictionary = stations[i]
-		var x: float = float(station["x"])
+		var z: float = float(station["x"])
 		var y: float = float(station["shift"]) - 0.02
 		for side: float in [-1.0, 1.0]:
 			# Poy (tayoqcha)
-			builder.add_box(origin + Vector3(x - 0.02, y - 0.06, side * half * 0.94),
-				Vector3(0.06, 0.05, 0.10), TRIM, 0.0, false)
+			builder.add_box(origin + Vector3(side * half * 0.94, y - 0.06,
+				z + 0.02), Vector3(0.10, 0.05, 0.06), TRIM, 0.0, false)
 			# Ko'zgu tanasi
-			builder.add_box(origin + Vector3(x - 0.06, y + 0.02, side * half * 1.12),
-				Vector3(0.16, 0.11, 0.05), TRIM, 0.0, false)
+			builder.add_box(origin + Vector3(side * half * 1.12, y + 0.02,
+				z + 0.06), Vector3(0.05, 0.11, 0.16), TRIM, 0.0, false)
 			# Ko'zgu yuzasi (qora)
-			builder.add_box(origin + Vector3(x - 0.10, y + 0.02, side * half * 1.14),
-				Vector3(0.12, 0.085, 0.02), GLASS, 0.0, false)
+			builder.add_box(origin + Vector3(side * half * 1.14, y + 0.02,
+				z + 0.10), Vector3(0.02, 0.085, 0.12), GLASS, 0.0, false)
 		break
 
 	# --- Pastki himoya (yarpaq to'siq) ---
@@ -511,8 +536,9 @@ static func _details(builder: MeshBuilder, spec: Dictionary,
 	# mumkin, lekin kichkinagina balandlik ko'pni saqlaydi.
 	var nose: Dictionary = stations[stations.size() - 1]
 	builder.add_box(
-		origin + Vector3(float(nose["x"]) - 0.12, float(nose["past"]) - 0.04, 0.0),
-		Vector3(0.18, 0.06, half * 1.7), UNDER, 0.0, collision)
+		origin + Vector3(0.0, float(nose["past"]) - 0.04,
+			float(nose["x"]) + 0.12),
+		Vector3(half * 1.7, 0.06, 0.18), UNDER, 0.0, collision)
 
 
 ## Marshrutka peshona belgisi — Xorazm ko'chasining eng tanilgan
@@ -533,22 +559,22 @@ static func _route_sign(builder: MeshBuilder, spec: Dictionary,
 			found = true
 	if not found:
 		return
-	var x: float = float(roof["x"]) - 0.26
+	var z: float = float(roof["x"]) + 0.26
 	var top: float = float(roof["shift"]) + 0.015
 	var width: float = 0.66
 	var height: float = 0.26
 	# Ikki tomonlama: oldi va orqa devorda bir xil belgi
 	for side: float in [1.0, -1.0]:
-		var panel := origin + Vector3(x, top + height * 0.5, side * 0.013)
-		builder.add_box(panel, Vector3(width, height, 0.026), LAMP, 0.0,
+		var panel := origin + Vector3(side * 0.013, top + height * 0.5, z)
+		builder.add_box(panel, Vector3(0.026, height, width), LAMP, 0.0,
 			collision and side > 0.0)
-		# Belgi matni — qora to'rtburchaklar (harflar kodda emas)
+		# Belgi matni — qara to'rtburchaklar (harflar kodda emas)
 		for i in 3:
 			var letter := origin + Vector3(
-				x - width * 0.27 + float(i) * width * 0.27,
-				top + height * 0.5, side * 0.030)
+				side * 0.030, top + height * 0.5,
+				z + width * 0.27 - float(i) * width * 0.27)
 			builder.add_box(letter,
-				Vector3(width * 0.15, height * 0.52, 0.01), UNDER, 0.0, false)
+				Vector3(0.01, height * 0.52, width * 0.15), UNDER, 0.0, false)
 
 
 # ================================================================ G'ILDORAK
@@ -562,18 +588,18 @@ static func wheels(builder: MeshBuilder, spec: Dictionary, origin: Vector3,
 	var base: float = float(spec["gildorak"]) * 0.5
 	var track: float = float(spec["iz"]) * 0.5
 	for front: bool in [false, true]:
-		var x: float = base if front else -base
+		var z: float = -base if front else base
 		for side: float in [-1.0, 1.0]:
-			_wheel(builder, origin + Vector3(x, radius, side * track),
+			_wheel(builder, origin + Vector3(side * track, radius, z),
 				radius, width, collision)
 
 
 static func _wheel(builder: MeshBuilder, centre: Vector3, radius: float,
 		width: float, collision: bool) -> void:
-	# G'ildorak yassi aylanma — ekseni Z bo'ylab
-	var axis := Vector3(0, 0, width * 0.5)
+	# G'ildorak yassi aylanma — ekseni X bo'ylab
+	var axis := Vector3(width * 0.5, 0, 0)
 	builder.add_cylinder(centre - axis, centre + axis, radius, 12, TYRE,
 		collision)
 	# Nippel — kichkina, lekin kuzovga yaqin tursa siluetni buzadi
-	builder.add_cylinder(centre - Vector3(0, 0, width * 0.52),
-		centre - Vector3(0, 0, width * 0.44), radius * 0.56, 10, RIM, false)
+	builder.add_cylinder(centre + Vector3(width * 0.44, 0, 0),
+		centre + Vector3(width * 0.52, 0, 0), radius * 0.56, 10, RIM, false)

@@ -366,3 +366,30 @@ static func is_water(x: float, z: float) -> bool:
 ## Yer ustidagi eng yaqin nuqta (obyekt qo'yish, kameralar uchun).
 static func surface_y(x: float, z: float) -> float:
 	return maxf(height_at(x, z), water_level_at(x, z))
+
+
+## HAQIQIY yer balandligi — nishat orqali o'lchanadi.
+##
+## NIMA UCHUN BU KERAK (va `height_at` nega yetarli emas)
+## `height_at()` ANALITIK natija: u shovin, kanallar va tekislashni
+## to'g'ridan-to'g'ri hisoblaydi. Lekin ko'rish uchun chiziladigan
+## chunk mesh'i 400 m kataklarda tuziladi va tugunlar ORASIDA chiziqli
+## interpolatsiya qiladi. Shu sababli mesh yuzasi analitik
+## balandlikdan farq qiladi: Kosiblar ko'chasi bo'ylab o'lchaganda
+## 0,42 m gacha.
+##
+## Bu mashina uchun halokatli: mashina 0,42 m botib ketsa yoki
+## havoda osilib qolsa, to'rtta g'ildorak ham noto'g'ri ishlaydi —
+## g'ildorak nishati yerga tegmaydi, yetakchi kuch ishlamaydi,
+## mashina qo'zg'almaydi. Shuning uchun mashinalar joylashtirilganda
+## MUTLAQ shu funksiya ishlatiladi.
+static func ground_height(space: PhysicsDirectSpaceState3D, x: float,
+		z: float, from: float = 90.0,
+		mask: int = PhysicsLayers.SOLID) -> float:
+	var query := PhysicsRayQueryParameters3D.create(
+		Vector3(x, from, z), Vector3(x, from - 260.0, z))
+	query.collision_mask = mask
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return height_at(x, z)
+	return (hit["position"] as Vector3).y

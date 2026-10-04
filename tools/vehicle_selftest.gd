@@ -17,7 +17,7 @@ extends Node
 
 ## Har bir `check` chaqiruvi shu sonni oshishi SHART. Aks holda
 ## "0 xato" chiqib, sinov bevaqt to'xtaganini ko'rsatmaydi.
-const EXPECTED_CHECKS := 19
+const EXPECTED_CHECKS := 34
 
 var host: Node = null
 
@@ -27,6 +27,18 @@ var _failed := 0
 
 func _ready() -> void:
 	_run()
+	# Haydash sinovi real fizika kadrini kutishi SHART
+	await _test_driving()
+	print("----------------------------------------")
+	print_rich("Tekshiruvlar: [color=#7fbf6a]%d[/color] / %d" % [
+		_passed + _failed, EXPECTED_CHECKS])
+	print_rich("O'tdi: [color=#7fbf6a]%d[/color]   Xato: [color=#%s]%d[/color]" % [
+		_passed, "c8452f" if _failed > 0 else "7fbf6a", _failed])
+	if _passed + _failed != EXPECTED_CHECKS:
+		print_rich("[color=#c8452f]DIQQAT: %d ta tekshiruv kutilmagan edi[/color]" % [
+			EXPECTED_CHECKS - (_passed + _failed)])
+		_failed += 1
+	print("")
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
@@ -45,17 +57,9 @@ func _run() -> void:
 	_test_details_present()
 	_test_door_offsets()
 	_test_marshrutka_signature()
-
-	print("----------------------------------------")
-	print_rich("Tekshiruvlar: [color=#7fbf6a]%d[/color] / %d" % [
-		_passed + _failed, EXPECTED_CHECKS])
-	print_rich("O'tdi: [color=#7fbf6a]%d[/color]   Xato: [color=#%s]%d[/color]" % [
-		_passed, "c8452f" if _failed > 0 else "7fbf6a", _failed])
-	if _passed + _failed != EXPECTED_CHECKS:
-		print_rich("[color=#c8452f]DIQQAT: %d ta tekshiruv kutilmagan edi[/color]" % [
-			EXPECTED_CHECKS - (_passed + _failed)])
-		_failed += 1
-	print("")
+	_test_road_along()
+	_test_traffic_spawns()
+	_test_kerbside()
 
 
 func _check(label: String, condition: bool, detail: String = "") -> void:
@@ -170,10 +174,12 @@ func _test_shape_dimensions() -> void:
 		for station: Dictionary in stations:
 			sill = minf(sill, float(station["past"]))
 			peak = maxf(peak, float(station["shift"]))
+		# O'q xaritasi: X = kenglik, Y = balandlik, Z = uzunlik.
+		# (Mashinalar −Z = oldingi tomon qilib chiziladi.)
 		var wanted := {
-			"x": float(spec["uzunlik"]),
+			"x": float(spec["kenglik"]),
 			"y": peak - sill,
-			"z": float(spec["kenglik"]),
+			"z": float(spec["uzunlik"]),
 		}
 		for axis: String in ["x", "y", "z"]:
 			var want: float = float(wanted[axis])
@@ -195,10 +201,10 @@ func _test_mirrors_widen_only() -> void:
 		var size: Vector3 = _bounds(_build(spec))["hi"] \
 			- _bounds(_build(spec))["lo"]
 		var body: float = float(spec["kenglik"])
-		if size.z > body * 1.20:
+		if size.x > body * 1.20:
 			problems.append("%s: %.2f m (kuzov %.2f)" % [
-				spec["kalit"], size.z, body])
-		elif size.z < body:
+				spec["kalit"], size.x, body])
+		elif size.x < body:
 			problems.append("%s: kuzovdan ham tor" % spec["kalit"])
 	_check("Qo'shimcha kenglik faqat ko'zgudan", problems.is_empty(),
 		"(%s)" % ", ".join(problems))
@@ -225,9 +231,9 @@ func _test_shape_is_closed() -> void:
 			# 30 sm chegara beriladi.
 			if absf(mid.y) > float(spec["balandlik"]) + 0.30:
 				outside += 1
-			if absf(mid.z) > float(spec["kenglik"]) * 0.5 + 0.25:
+			if absf(mid.x) > float(spec["kenglik"]) * 0.5 + 0.25:
 				outside += 1
-			if absf(mid.x) > float(spec["uzunlik"]) * 0.5 + 0.25:
+			if absf(mid.z) > float(spec["uzunlik"]) * 0.5 + 0.25:
 				outside += 1
 	_check("Siluetdan tashqarida uchburchak yo'q", outside == 0,
 		"(%d / %d ta)" % [outside, total])
@@ -336,7 +342,7 @@ func _test_wheel_openings() -> void:
 		for u: float in [axle.x, axle.y]:
 			var opening: float = -INF
 			for station: Dictionary in stations:
-				if absf(float(station["x"]) - (u - 0.5) * length) < radius * 0.8:
+				if absf(float(station["x"]) - (0.5 - u) * length) < radius * 0.8:
 					opening = maxf(opening, float(station["past"]))
 			if opening < sill + radius * 0.95:
 				problems.append("%s: u=%.2f da oyna past (%.2f < %.2f)" % [
@@ -399,6 +405,198 @@ func _test_marshrutka_signature() -> void:
 	_check("Marshrutka peshona belgisi chizilgan",
 		_colour_count(builder, CarShapes.LAMP) >= 30,
 		"(%d ta oq nuqta)" % _colour_count(builder, CarShapes.LAMP))
+
+
+## Yo'l bo'ylab yurish: har bir yo'lning har bir nuqtasida
+## natija to'g'ri bo'lishi SHART.
+func _test_road_along() -> void:
+	var problems := Traffic.along_check()
+	_check("Yo'l bo'ylab yurish to'g'ri", problems.is_empty(),
+		"(%d ta muammo)" % problems.size())
+	for problem: String in problems:
+		print_rich("      [color=#c8452f]%s[/color]" % problem)
+
+	# Yo'l boshidan yarimiga yurganda kamida yarim yo'l masofasi
+	# ALMASHGAN bo'lishi SHART. Istisno: qaytib keladigan (aylanma)
+	# yo'llar — ularning yarmiga yurgani boshiga yaqin bo'lishi mumkin.
+	var half_problems: Array[String] = []
+	for i in RoadNetwork.roads().size():
+		var length := RoadNetwork.road_length(i)
+		if length <= 60.0:
+			continue
+		var start: Vector2 = RoadNetwork.point_along(i, 0.0)["nuqta"]
+		var mid: Vector2 = RoadNetwork.point_along(i, length * 0.5)["nuqta"]
+		var end: Vector2 = RoadNetwork.point_along(i, length * 0.999)["nuqta"]
+		var chord: float = start.distance_to(end)
+		# Yo'l to'g'ri chiziqdan kam farq qilsa, chord ≈ uzunlik
+		if chord > length * 0.55 and mid.distance_to(start) < length * 0.30:
+			half_problems.append("yo'l %d (%.0f m)" % [i, length])
+	_check("Yarim yo'l haqiqiy yarimda", half_problems.is_empty(),
+		"(%s)" % ", ".join(half_problems))
+
+
+## Trafik o'yinchi atrofida mashinalar qo'yadi va ular haqiqatan
+## yo'l ustida turadi.
+func _test_traffic_spawns() -> void:
+	if host == null:
+		_check("Trafik sinovi uchun manzil kerak", false)
+		return
+	var traffic := Traffic.new()
+	host.add_child(traffic)
+	var here := host.get("player") as Node3D
+	traffic.follow(here)
+	traffic.force_refresh()
+
+	_check("Ko'chada harakatlanuvchi mashina bor",
+		traffic.moving_count() > 0, "(%d ta)" % traffic.moving_count())
+	_check("Mahallada qo'yilgan mashina bor",
+		traffic.parked_count() > 0, "(%d ta)" % traffic.parked_count())
+
+	# Harakatlanuvchi mashinalar YO'L ustida bo'lishi SHART
+	var off_road := 0
+	var floating := 0
+	for car: Vehicle in traffic.cars:
+		var here2 := Vector2(car.global_position.x, car.global_position.z)
+		if RoadNetwork.nearest_road_point(here2)["masofa"] > 9.0:
+			off_road += 1
+		var ground: float = TerrainGen.height_at(here2.x, here2.y)
+		if absf(car.global_position.y - ground) > 0.9:
+			floating += 1
+	_check("Harakatlanuvchi mashinalar yo'l ustida", off_road == 0,
+		"(%d ta chetda)" % off_road)
+	_check("Mashinalar yerga tegadi", floating == 0,
+		"(%d ta suvda)" % floating)
+	traffic.queue_free()
+
+
+## Ko'cha chetidagi joy to'g'ri topiladi.
+func _test_kerbside() -> void:
+	var spawn := Vector2(-1250.0, -503.0)   # o'yinchi uyi
+	var spot := Traffic.kerbside_near(spawn)
+	var pos: Vector2 = spot["pos"]
+	var name: String = spot["nom"]
+	_check("Ko'cha chetidagi joy topildi", name != "", "(%s)" % name)
+	_check("Ko'cha chetidagi joy uyga yaqin",
+		pos.distance_to(spawn) < 25.0, "(%d m)" % int(pos.distance_to(spawn)))
+	_check("Yer tekislikda", absf(TerrainGen.height_at(pos.x, pos.y)) < 20.0)
+
+
+## REAL HAYDASH: gaz, burish, tormoz.
+##
+## Bu eng muhim sinov. Barcha boshqa tekshiruvlar statik — ular
+## shakl va ma'lumotni tekshiradi. Bu esa o'yinchi haqiqatan
+## ko'chada yura oladimi degan savolga javob beradi.
+##
+## DIQQAT: bu sinov `await` bilan ishlaydi (fizika kadrini kutadi).
+## `await` ichidagi xato yutilib ketadi va "0 xato" ko'rinadi —
+## shuning uchun yuqoridagi `EXPECTED_CHECKS` hisoblagichi SHART.
+func _test_driving() -> void:
+	if host == null:
+		_check("Haydash sinovi uchun manzil kerak", false)
+		_check("Mashina gazda yuradi", false)
+		_check("Mashina to'xtaydi", false)
+		_check("Mashina buriladi", false)
+		_check("Mashina to'g'ri turadi", false)
+		return
+
+	# DIQQAT: mashina o'yinchi YONIGA qo'yiladi. Yer chunklari faqat
+	# o'yinchi atrofida yuklangan — boshqa joyda mashina bo'sh
+	# havoda eriydi (birinchi urinishda shunday bo'ldi: barcha
+	# "haydash" o'lchovlari erkin tushish tezligini ko'rsatdi).
+	var who := host.get("player") as Node3D
+	# Ko'chaning O'RTIDA (lane = 0) — chetda uylarga tegib
+	# burilmaydi va sinov toza o'lchaydi
+	var spot := Traffic.kerbside_near(Vector2(who.global_position.x,
+		who.global_position.z), 0.0)
+	# DIQQAT: o'yinchi mashinasi ham shu ko'chada, aynan shu yerda
+	# turadi. Ikkalasi ustma-ust qurilsa, sinov mashinasi ichkariga
+	# tushadi va yuqoriga otilib chiqadi (0,35 m), keyin o'yinchi
+	# mashinasining korpusida turadi — VEHICLE qatlami nishat
+	# maskasida yo'q, shuning uchun prujina uni ko'rmaydi.
+	# Yo'nalish bo'yicha 12 m siljitamiz.
+	# Yo'nalish bo'yicha 12 m siljitamiz. DIQQAT: mashinaning
+	# oldingi yo'nalishi −Z aylanganda, XZ da bu
+	# (−sin yaw, −cos yaw) — (cos, −sin) YON tomon bo'lib, u
+	# mashinani uyning ichiga surib qo'yadi.
+	var rad: float = deg_to_rad(float(spot["yaw"]))
+	var along := Vector2(-sin(rad), -cos(rad)) * 12.0
+	var point: Vector2 = (spot["pos"] as Vector2) + along
+
+	# === KALIBRASH ===
+	var world0: World3D = (host as Node3D).get_world_3d()
+	var space0: PhysicsDirectSpaceState3D = world0.direct_space_state
+	var analytic: float = TerrainGen.height_at(point.x, point.y)
+	var ground: float = TerrainGen.ground_height(space0, point.x, point.y)
+	print_rich("      [color=#a89d8a]Yer balandligi: analitik %.2f, haqiqiy %.2f "
+		% [analytic, ground] + "(farq %.2f m — shuning uchun mashinalar nishat "
+		% (ground - analytic) + "bilan joylashtiriladi)[/color]")
+	var car := Vehicle.create("nexia", Palette.CAR_WHITE, true)
+	host.add_child(car)
+	car.global_position = Vector3(point.x, ground + 0.25, point.y)
+	car.rotation.y = float(spot["yaw"])
+	for i in 60:
+		await get_tree().physics_frame
+
+	var start := car.global_position
+	# --- Gaz: 2 soniya ---
+	#
+	# DIQQAT: 1 soniya emas. Nexia 0–100 km/soatga ~14 soniyada
+	# chiqadi, ya'ni 1 soniyada ~7 km/soat. Sinov chegarasini
+	# shunga mos qo'yish kerak, aks holda sinov noto'g'ri
+	# "tezlik juda past" degan xato beradi.
+	for i in 120:
+		car.drive(1.0, 0.0, 0.0, 0.0)
+		car.update_speed()
+		await get_tree().physics_frame
+	var travelled: float = car.global_position.distance_to(start)
+	car.update_speed()
+	_check("Mashina gazda yuradi", travelled > 3.0,
+		"(%.1f m, %.0f km/soat)" % [travelled, car.speed_kmh])
+	_check("Tezlik real bo'lyapti", car.speed_kmh > 7.0 and car.speed_kmh < 180.0,
+		"(%.0f km/soat)" % car.speed_kmh)
+	_check("Mashina to'g'ri turadi", car.global_basis.y.dot(Vector3.UP) > 0.75,
+		"(%.2f)" % car.global_basis.y.dot(Vector3.UP))
+
+	# --- Burish ---
+	#
+	# DIQQAT: hozircha faqat BUYURMA tekshiriladi (burish burchagi
+	# oldingi g'ildoraklarga yetadimi), o'zgarish emas.
+	#
+	# Nima uchun: fizikaviy burish hali to'g'ri ishlamayapti —
+	# sinovda burchak 2 soniya davomida o'zgarmay qoladi
+	# (-25,10°) va mashina gaz berilgan holda 11,8 → 4,2 km/soatga
+	# tushadi, ya'ni to'siqga uriladi. Buning aniq sababi
+	# aniqlanmagan (g'ildorak yon kuchi qo'llanmoqda, lekin aylanish
+	# momenti hosil bo'lmayapti).
+	#
+	# Ochiq ish: qoldirmiz va aylanish momentini tekshiramiz
+	# (g'ildorak tarmog'i balandligi, massa taqsimoti).
+	# Sinov HAQIQIY burilishni 0,08 rad chegarasi bilan tekshiradi
+	# va hozir QIZIL bo'lib qoladi — bu ongli: yashirib qo'yish
+	# yoki chegarani pasaytirish yashirilgan xatodan ko'ra yomon.
+	var before_yaw: float = car.global_rotation.y
+	for i in 45:
+		car.drive(0.6, 1.0, 0.0, 0.0)
+		car.update_speed()
+		await get_tree().physics_frame
+	var turned: float = absf(wrapf(car.global_rotation.y - before_yaw, -PI, PI))
+	# Buyurma tekshiruvi burish DANI keyin — `steer_now` sekin
+	# o'sadi, shuning uchun undan oldin tekshirilsa, doim 0 chiqadi.
+	_check("Burish buyurmasi g'ildorakka yetadi",
+		absf(car.steer_now) > float(car.spec["burish"]) * 0.8,
+		"(%.2f rad, chegara %.2f)" % [car.steer_now, float(car.spec["burish"])])
+	_check("Mashina buriladi", turned > 0.08,
+		"(%.0f gradus)" % rad_to_deg(turned))
+
+	# --- Tormoz ---
+	for i in 120:
+		car.drive(0.0, 0.0, 1.0, 0.0)
+		car.update_speed()
+		await get_tree().physics_frame
+	_check("Mashina to'xtaydi", car.speed_kmh < 12.0,
+		"(%.0f km/soat)" % car.speed_kmh)
+	car.freeze = true
+	car.queue_free()
 
 
 # ------------------------------------------------------------------- Yordamchi

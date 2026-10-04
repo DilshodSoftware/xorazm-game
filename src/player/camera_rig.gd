@@ -45,6 +45,12 @@ var _recoil_offset := 0.0
 var _recoil_velocity := 0.0
 var _vehicle := false
 
+## Haydash paytida kamera qaysi nuqtaga ulanadi (odatda mashina).
+## `null` bo'lsa oddiy rejim — o'yinchi yuradi.
+var seat_target: Node3D = null
+## Kamera nuqtasi: `seat_target` ga nisbatan, o'zining ichida.
+var seat_offset := Vector3.ZERO
+
 
 func _ready() -> void:
 	camera = get_node_or_null("Camera") as Camera3D
@@ -100,7 +106,45 @@ func set_fov_base(value: float) -> void:
 	fov_base = value
 
 
+## Kamera nuqtasini ulaydi. [param offset] — nisbiy joylashuv.
+func attach_seat(node: Node3D, offset: Vector3) -> void:
+	seat_target = node
+	seat_offset = offset
+
+
+func detach_seat() -> void:
+	seat_target = null
+
+
 func _process(delta: float) -> void:
+	# --- Haydash rejimi ---
+	#
+	# DIQQAT: bu blok BOSHIDA bo'lishi SHART va undan keyin `return`
+	# SHART. Rig har kadrda `position.y` ni o'zgartiradi (ko'z
+	# balandligi + tebranish), shuning uchun joylashuvni keyinroqda
+	# qo'ysak, o'zgarishimiz ustiga yozilib ketadi va kamera yerga
+	# tushib qoladi.
+	#
+	# Tebranish ham o'chadi: mashina tebranishi osilish bilan keladi,
+	# ikkalasi qo'shilsa kamera betakror bo'lardi.
+	if seat_target != null and is_instance_valid(seat_target):
+		var parent := get_parent() as Node3D
+		var world: Vector3 = seat_target.global_position + seat_offset
+		if parent != null:
+			position = parent.to_local(world)
+		else:
+			position = world
+		_bob_blend = 0.0
+		_landing_offset = 0.0
+		_landing_velocity = 0.0
+		_recoil_offset = 0.0
+		if camera:
+			camera.position = Vector3.ZERO
+			camera.rotation = Vector3.ZERO
+			camera.fov = lerpf(camera.fov, fov_vehicle,
+				clampf(delta * fov_lerp_speed, 0.0, 1.0))
+		return
+
 	# --- Ko'z balandligi ---
 	var target_eye: float = eye_crouch if is_crouching() else eye_stand
 	_eye_current = lerpf(_eye_current, target_eye, clampf(delta * eye_lerp_speed, 0.0, 1.0))

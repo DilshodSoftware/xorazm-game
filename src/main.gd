@@ -17,8 +17,12 @@ var player: Player
 var chunks: ChunkManager
 var buildings: BuildingManager
 var player_house: Dictionary = {}
+var traffic: Traffic
+var driver: PlayerCar
+var player_vehicle: Vehicle = null
 var _hud: Label
 var _prompt: Label
+var _speedo: Label
 var _hud_visible := false
 
 
@@ -78,6 +82,15 @@ func _build_world() -> void:
 	# qayta quradi — shuning uchun bu tartib MUTLAQ.
 	player_house = PlayerHouse.build(self, OS.get_cmdline_user_args().has("--inspect"))
 
+	# --- Mashinalar ---
+	# Avval trafik, keyin o'yinchi mashinasi: aks holda o'yinchi
+	# mashinasi AI mashinalari orasida qolib ketishi mumkin.
+	traffic = Traffic.new()
+	add_child(traffic)
+
+	driver = PlayerCar.new()
+	add_child(driver)
+
 
 ## O'yinchini Tandirchi mahallasida, uy oldida o'rnatadi.
 func _spawnplayer() -> void:
@@ -95,12 +108,77 @@ func _spawnplayer() -> void:
 	buildings.target = player
 	buildings.force_load_all(player.global_position)
 
+	# --- Mashinalar ---
+	# O'yinchi mashinasi uy oldiga, ko'cha chetiga qo'yiladi:
+	# Kosiblar ko'chasi. Odatda Nexia — Xorazmda eng ko'p uchraydigan
+	# va arzon mashina.
+	player_vehicle = _spawn_player_vehicle()
+	traffic.follow(player)
+	# Boshida mashinalar darhol ko'rinsin (bir kadr kutmasdan)
+	traffic.force_refresh()
+
+
+## Ko'cha chetida, o'yinchi uyiga yaqin joyda haydana oladigan
+## mashina qo'yadi.
+func _spawn_player_vehicle() -> Vehicle:
+	var car := Vehicle.create("nexia", Palette.CAR_WHITE, true)
+	add_child(car)
+	var here := Vector2(player.global_position.x, player.global_position.z)
+	var spot := Traffic.kerbside_near(here)
+	var pos: Vector2 = spot["pos"]
+	car.global_position = Vector3(pos.x, TerrainGen.height_at(pos.x, pos.y),
+		pos.y)
+	car.rotation.y = float(spot["yaw"])
+	_attach_vehicle_zone(car)
+	return car
+
+
+## Mashinaga E bilan minish uchun zona.
+func _attach_vehicle_zone(car: Vehicle) -> void:
+	var zone := Interactable.new()
+	zone.name = "Minish"
+	zone.label_key = "amal.minish"
+	zone.prompt = Lang.txt(String(car.spec["nom"]))
+	zone.action = "drive"
+	zone.fired.connect(func(_who: Node3D) -> void: _enter_vehicle(car))
+	car.add_child(zone)
+
+
+## Mashinaga o'tadi (F yoki E).
+func _enter_vehicle(car: Vehicle) -> void:
+	if driver == null or driver.vehicle != null:
+		return
+	if car == null or car == driver.vehicle:
+		return
+	if not car.physics_driven:
+		return
+	driver.take_control(car, player)
+	if _speedo:
+		_speedo.visible = true
+
+
+## Mashinadan tushadi (F).
+func _exit_vehicle() -> void:
+	if driver == null or driver.vehicle == null:
+		return
+	driver.release()
+	if _speedo:
+		_speedo.visible = false
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("debug_overlay"):
 		_hud_visible = not _hud_visible
 		if _hud:
 			_hud.visible = _hud_visible
+	elif event.is_action_pressed("vehicle_enter_exit"):
+		if driver != null and driver.vehicle != null:
+			_exit_vehicle()
+		elif player_vehicle != null:
+			_enter_vehicle(player_vehicle)
+	elif event.is_action_pressed("horn") and driver != null \
+			and driver.vehicle != null:
+		driver.vehicle.horn_pressed.emit(player)
 	elif event is InputEventKey and event.pressed and (event as InputEventKey).keycode == KEY_F1:
 		_toggle_help()
 
@@ -109,10 +187,13 @@ func _process(_delta: float) -> void:
 	if _hud_visible and _hud:
 		_hud.text = _diagnostics()
 	# Oyna o'yni ekran pastki markazida ushlab turadi
+	var size := get_viewport().get_visible_rect().size
 	if _prompt != null and _prompt.visible:
-		var size := get_viewport().get_visible_rect().size
 		_prompt.size = Vector2(size.x, 0)
 		_prompt.position = Vector2(0, size.y - 130)
+	if _speedo != null and _speedo.visible:
+		_speedo.size = Vector2(240, 60)
+		_speedo.position = Vector2(size.x - 256, size.y - 92)
 
 
 func _on_interact_shown(text: String) -> void:
@@ -124,6 +205,17 @@ func _on_interact_shown(text: String) -> void:
 func _on_interact_hidden() -> void:
 	if _prompt != null:
 		_prompt.visible = false
+
+
+## Tezlik o'lchagini yangilaydi va ekranning o'ng pastiga joylaydi.
+func _on_speed_changed(kmh: float) -> void:
+	if _speedo == null:
+		return
+	var size := get_viewport().get_visible_rect().size
+	_speedo.size = Vector2(240, 60)
+	_speedo.position = Vector2(size.x - 256, size.y - 92)
+	# Butun son — o'yinchi uchun 0…200 oralig'i kerak, kasr kerak emas
+	_speedo.text = "%d\n%s" % [int(round(kmh)), Lang.txt("hud.kmo_soat")]
 
 
 # ------------------------------------------------------------------------ HUD
@@ -158,6 +250,21 @@ func _build_hud() -> void:
 	_hud.add_theme_constant_override("outline_size", 4)
 	_hud.visible = false
 	layer.add_child(_hud)
+
+	# --- Tezlik o'lchag ---
+	# O'ng pastda, katta raqam bilan. Haydash paytida paydo bo'ladi.
+	_speedo = Label.new()
+	_speedo.name = "Tezlik"
+	_speedo.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_speedo.add_theme_font_size_override("font_size", 44)
+	_speedo.add_theme_color_override("font_color", Palette.UI_ACCENT)
+	_speedo.add_theme_color_override("font_outline_color", Color.BLACK)
+	_speedo.add_theme_constant_override("outline_size", 6)
+	_speedo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_speedo.visible = false
+	layer.add_child(_speedo)
+	if driver != null:
+		driver.speed_changed.connect(_on_speed_changed)
 
 
 func _diagnostics() -> String:

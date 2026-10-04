@@ -420,16 +420,39 @@ bir-biriga urilmaydi.
 
 ### Qolmagan ish
 
-**Burish fizikasi.** Mashina to'g'ri chiziq bo'ylab boradi va
-burilmaydi. Sinovda 0,5 soniya to'liq burish burchagida (−0,58 rad)
-burchak 0° ga o'zgaradi. Burish buyurmasi g'ildoraklarga yetadi
-(`steer_now` = −0,58, tekshiruv o'tadi), yon ishqalanish kuchi
-hisoblanadi, lekin aylanish momenti hosil bo'lmaydi.
+### ⚠️ Ochiq muammo: burish
 
-Sinov (`--test-vehicles`) bu holda **qizil** bo'lib qoladi —
-yashirib qo'yish emas. Ochiq ish: g'ildorak tarmog'i balandligi va
-og'irlik markazining Z taqsimotini tekshirish, `apply_torque` bilan
-aylanish momentini qo'shish.
+Mashina to'g'ri chiziq bo'ylab boradi va burilmaydi.
+
+Holat: sinov quyidagini ko'rsatadi (chiqish matnida ham yozilgan):
+
+| Nima | Natija |
+|---|---|
+| Burish burchagi | −0,58 rad (to'liq) ✓ |
+| Yon kuchlar | oldingi +2130 N, orqa −2113 N ✓ (teng, qarama-qarshi) |
+| Kontakt nuqtalari | 4 ta ✓ |
+| **Aylanish tezligi** | **0,000 rad/s** ✗ |
+
+Ya'ni kuchlar to'g'ri hisoblanmoqda va teng, lekin jism aylanmayapti.
+
+Uchta urinish qilingan, har biri haqiqiy xatoni tuzatdi:
+1. Tezlikni to'liq nolga keltirish → chegaraga tegib, moment
+   butunlay yo'qolgan edi.
+2. Sirish burchagi modeli (burilgan g'ildorak yo'nalishida) →
+   yon kuch mashinaning oldingi yo'nalishida 5,4 kN tormoq kuchi
+   yaratdi, dvigatel kuchidan ko'p.
+3. Yon kuch mashina yo'nalishiga bog'langanda tormoq yo'qoldi,
+   lekin burish burchagi umuman kuchga ta'sir qilmadi.
+
+Endi: oldingi g'ildorak yon kuchi burish burchagiga proportsional
+(kinematik arcade model), orqa gildorak yon silinishga qarsiliq
+ko'rsatadi.
+
+Sinov (`--test-vehicles`) bu holda **qizil** qoladi — yashirib
+qo'yilmaydi. Keyingi qadam: `apply_torque` bilan bevosita moment
+berib, jism umuman aylanadimi — ya'ni muammo kuchning
+**tatbiqida**mi yoki **jismning o'zida**mi (masalan, korpus
+biror narsa bilan qisilgan).
 
 **Tezlik chegarasi.** `tepa_tezlik` faqat HUD va gazni cheklash
 uchun ishlatiladi; haqiqiy tezlik havo qarshiligi bilan

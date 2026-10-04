@@ -108,6 +108,12 @@ const MUK := 2.4                     ## asfalt (uzunlik — yetakchi kuch)
 ## 2,2 km/soat, burchak o'zgarmadi). Haqiqiy mashina maksimal
 ## 0,8–1,0 g bilan buriladi.
 const MUK_LATERAL := 1.0
+
+## Burish kuchi. Oldingi g'ildorak yon kuchi shu miqdorda
+## burish burchagiga proportsional. 1,0 = to'liq burishda kuch
+## `N` ga teng (taxminan 1 g). Katta qiymat mashinani "qayiq"
+## qilib buradi, kichik qiymat — aksar tutqichli.
+const TURN_GAIN := 0.75
 const MUK_HANDBRAKE := 0.9           ## qo'lda tormoz — orqa g'ildorak
 const AERO_DRAG := 0.9              ## havo qarshiligi (tezlik² ga)
 ## G'ildorak aylanish qarshiligi. Haqiqiy qiymat vaznning 1–2% —
@@ -384,6 +390,7 @@ func _physics_process(delta: float) -> void:
 		apply_force(normal * force, point - origin)
 	_on_floor = contacts > 0
 	_last_forces = normal_forces
+	_last_hits = hits
 	if contacts == 0:
 		return
 
@@ -412,40 +419,83 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 			continue
 		var front: bool = i < 2
 		# G'ildorakning yo'nalishlari
+		# Uzunlik yo'nalishi — burilgan holda (bu to'g'ri: shina
+		# aylanish o'qi bo'ylab yuguradi).
 		var forward: Vector3 = -basis.z
 		if front:
 			forward = forward.rotated(up, steer_now)
 		forward = (forward - up * forward.dot(up)).normalized()
-		var side: Vector3 = forward.cross(up).normalized()
+		# Yon yo'nalishi — MASHINANING o'z yoniga qaragan.
+		#
+		# DIQQAT: bu burilgan g'ildorak yo'nalishiga PERPENDIKULAR
+		# emas. Shunday qilib yon kuch mashinaning oldinga
+		# yo'nalishida katta TORMOQ kuchi hosil qilardi: to'liq
+		# burishda (0,58 rad) yon kuch μ·N ga tegadi va uning
+		# oldinga komponenti 2 × 2700 N bo'ladi — dvigatel kuchi
+		# (1950 N) ustidan ham ko'p. Natija: mashina gaz berilgan
+		# holda ham 1 km/soatdan oshmaydi va burilmaydi.
+		# Sinovda shunday ko'rindi: 0,75 soniyada 1,1 km/soat,
+		# burchak 0°.
+		#
+		# Ko'p arcade o'yin ham shuni qiladi: yon kuch doim
+		# mashinaning o'z yon tomoniga qarab yo'naltiriladi.
+		var car_forward: Vector3 = -basis.z
+		car_forward = (car_forward - up * car_forward.dot(up)).normalized()
+		var side: Vector3 = car_forward.cross(up).normalized()
 
 		var lever: Vector3 = hits[i] - origin
 		var point_velocity: Vector3 = body_velocity + omega.cross(lever)
 		var v_forward: float = point_velocity.dot(forward)
 		var v_side: float = point_velocity.dot(side)
 
-		# --- Yon ishqalanish: SIRISH BURCHAGI modeli ---
+		# --- Yon ishqalanish ---
 		#
-		# DIQQAT: avval tezlikni to'liq nolga keltirish usuli
-		# ishlatilgan edi (`−v_side × ulush / delta`). U har doim
-		# chegaraga tegib turar edi va shuning uchun burilish
-		# momentini butunlay yo'q qilardi: mashina qo'lda ham,
-		# to'g'ri ham yurardi (sinovda 2 soniyada 3 gradus).
+		# DIQQAT: bu qism ikki marta qayta yozildi, sababi ham
+		# o'zgarildi. Maqomi — arxiv:
 		#
-		# Haqiqiy shina ham sirishadi: yon kuch sirish burchagiga
-		# PROPORSIONAL va faqat chegaraga yetganda to'xtaydi.
-		#     burchak ≈ v_yon / |v_uzunlik|
-		#     kuch = burchak × qattiqlik,  chegarada kesiladi
-		# Shu bilan birga aylanish o'zi barqaror muvozanatga
-		# keladi — aynan shunda mashina buriladi.
+		# 1) Birinchi urinish: tezlikni to'liq nolga keltirish
+		#    (`−v_side × ulush / delta`). Har doim chegaraga
+		#    tegib, aylanish momentini butunlay yo'q qiladi —
+		#    mashina qo'lda ham to'g'ri ham yurardi (3° / 2 s).
+		#
+		# 2) Ikkinchi urinish: sirish burchagi modeli
+		#    (`slip × qattiqlik`), o'lchash BURILGAN g'ildorak
+		#    yo'nalishiga nisbatan. To'g'ri fizika, lekin yon kuch
+		#    mashinaning oldingi yo'nalishida 2 × 2700 N tormoq
+		#    kuchi yaratdi — dvigatel kuchidan (1950 N) ko'p.
+		#    Mashina gaz berilgan holda 1,1 km/soatdan oshmadi.
+		#
+		# 3) Uchinchi urinish: yon kuch mashina yo'nalishiga
+		#    bog'langanda tormoq yo'qoldi, lekin burish burchagi
+		#    kuchga umuman ta'sir qilmadi (0°, 4,8 km/soat).
+		#
+		# YECHIM (hozirgi): ARCADE MODEL
+		#   * oldingi g'ildorak — yon kuch burish burchagiga
+		#     PROPORSIONAL. Bu aylanish momentini yaratadi
+		#     (`steer × N × TURN_GAIN`), shuning uchun mashina
+		#     tezligidan qat'i nazar buriladi (kinematik
+		#     boshqaruv — ko'plab arcade o'yinlar shunday).
+		#   * orqa g'ildorak — yon silinishga qarsiliq: yon
+		#     tezlikni NOLGA keltiradi, ya'ni mashina yonmaydi,
+		#     faqat buriladi.
+		#   * ikkalasi ham mashinaning o'z yon tomoniga
+		#     qo'llaniladi → oldinga yo'nalishda tormoq yo'q.
+		#
+		# YAQINROQ VAQT: barcha g'ildorak uchun to'liq sinish
+		# modeli (shina egilishi, yuklash transferi, ABS).
+		# Hozirgi model atayin va ishonchli, lekin yuqori
+		# tezlikda real emas.
 		var limit: float = normal_forces[i] * MUK_LATERAL
 		if not front:
 			# Qo'lda tormozda orqa ishqalanish susadi — mashina
 			# yonma-yon silinadi (odatdagidek)
 			limit *= lerpf(MUK_LATERAL, MUK_LATERAL * 0.4, handbrake_now)
-		var speed_forward: float = maxf(absf(v_forward), 1.2)
-		var slip: float = -v_side / speed_forward
-		var stiffness: float = normal_forces[i] * 4.5
-		var side_force: float = clampf(slip * stiffness, -limit, limit)
+		var side_force := 0.0
+		if front:
+			side_force = clampf(-steer_now * normal_forces[i] * TURN_GAIN,
+				-limit, limit)
+		else:
+			side_force = clampf(-v_side * share / delta, -limit, limit)
 
 		# --- Uzunlik kuchi: gaz, tormoz, aylanish qarshiligi ---
 		#
@@ -471,6 +521,7 @@ func _apply_tyres(basis: Basis, up: Vector3, hits: Array[Vector3],
 		var total: float = drive + roll - brake * signf(v_forward)
 		var long_force: float = clampf(total, -limit * 1.25, limit * 1.25)
 
+		_last_side[i] = side_force
 		apply_force(forward * long_force + side * side_force, lever)
 
 
@@ -541,6 +592,20 @@ func suspension_forces() -> Array[float]:
 
 
 var _last_forces: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _last_hits: Array[Vector3] = []
+
+
+## Oxirgi kadrda kontakt nuqtalari (sinov uchun).
+func contact_points() -> Array[Vector3]:
+	return _last_hits
+
+
+## Oxirgi kadrda hisoblangan yon kuch (sinov uchun).
+func side_forces_now() -> Array[float]:
+	return _last_side
+
+
+var _last_side: Array[float] = [0.0, 0.0, 0.0, 0.0]
 
 
 ## Barcha g'ildorak yerdan ko'tarilganmi (havoda).

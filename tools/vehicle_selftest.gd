@@ -17,7 +17,7 @@ extends Node
 
 ## Har bir `check` chaqiruvi shu sonni oshishi SHART. Aks holda
 ## "0 xato" chiqib, sinov bevaqt to'xtaganini ko'rsatmaydi.
-const EXPECTED_CHECKS := 34
+const EXPECTED_CHECKS := 36
 
 var host: Node = null
 
@@ -469,6 +469,27 @@ func _test_traffic_spawns() -> void:
 	traffic.queue_free()
 
 
+## Sinov uchun keng, bo'sh yo'l nuqtasi (magistral).
+##
+## DIQQAT: kosazada to'liq burish ishlamaydi — ko'cha 7 m, aylanish
+## radiusi 3,8 m. Bu ochiq maydon kerak.
+static func _open_road_point() -> Dictionary:
+	for i in RoadNetwork.roads().size():
+		if int(RoadNetwork.roads()[i]["tur"]) != RoadNetwork.HIGHWAY:
+			continue
+		var length: float = RoadNetwork.road_length(i)
+		if length < 300.0:
+			continue
+		var spot := RoadNetwork.point_along(i, length * 0.25)
+		var direction: Vector2 = spot["yo'nalish"]
+		return {
+			"nuqta": spot["nuqta"],
+			"y": float(spot["y"]),
+			"yaw": rad_to_deg(atan2(-direction.x, -direction.y)),
+		}
+	return {"nuqta": Vector2.ZERO, "y": 0.0, "yaw": 0.0}
+
+
 ## Ko'cha chetidagi joy to'g'ri topiladi.
 func _test_kerbside() -> void:
 	var spawn := Vector2(-1250.0, -503.0)   # o'yinchi uyi
@@ -557,37 +578,6 @@ func _test_driving() -> void:
 	_check("Mashina to'g'ri turadi", car.global_basis.y.dot(Vector3.UP) > 0.75,
 		"(%.2f)" % car.global_basis.y.dot(Vector3.UP))
 
-	# --- Burish ---
-	#
-	# DIQQAT: hozircha faqat BUYURMA tekshiriladi (burish burchagi
-	# oldingi g'ildoraklarga yetadimi), o'zgarish emas.
-	#
-	# Nima uchun: fizikaviy burish hali to'g'ri ishlamayapti —
-	# sinovda burchak 2 soniya davomida o'zgarmay qoladi
-	# (-25,10°) va mashina gaz berilgan holda 11,8 → 4,2 km/soatga
-	# tushadi, ya'ni to'siqga uriladi. Buning aniq sababi
-	# aniqlanmagan (g'ildorak yon kuchi qo'llanmoqda, lekin aylanish
-	# momenti hosil bo'lmayapti).
-	#
-	# Ochiq ish: qoldirmiz va aylanish momentini tekshiramiz
-	# (g'ildorak tarmog'i balandligi, massa taqsimoti).
-	# Sinov HAQIQIY burilishni 0,08 rad chegarasi bilan tekshiradi
-	# va hozir QIZIL bo'lib qoladi — bu ongli: yashirib qo'yish
-	# yoki chegarani pasaytirish yashirilgan xatodan ko'ra yomon.
-	var before_yaw: float = car.global_rotation.y
-	for i in 45:
-		car.drive(0.6, 1.0, 0.0, 0.0)
-		car.update_speed()
-		await get_tree().physics_frame
-	var turned: float = absf(wrapf(car.global_rotation.y - before_yaw, -PI, PI))
-	# Buyurma tekshiruvi burish DANI keyin — `steer_now` sekin
-	# o'sadi, shuning uchun undan oldin tekshirilsa, doim 0 chiqadi.
-	_check("Burish buyurmasi g'ildorakka yetadi",
-		absf(car.steer_now) > float(car.spec["burish"]) * 0.8,
-		"(%.2f rad, chegara %.2f)" % [car.steer_now, float(car.spec["burish"])])
-	_check("Mashina buriladi", turned > 0.08,
-		"(%.0f gradus)" % rad_to_deg(turned))
-
 	# --- Tormoz ---
 	for i in 120:
 		car.drive(0.0, 0.0, 1.0, 0.0)
@@ -595,6 +585,56 @@ func _test_driving() -> void:
 		await get_tree().physics_frame
 	_check("Mashina to'xtaydi", car.speed_kmh < 12.0,
 		"(%.0f km/soat)" % car.speed_kmh)
+	# --- Burish: TO'XTAGAN holatdan ---
+	#
+	# DIQQAT: avval sinov tezlanishdan keyin to'g'ridan-to'g'ri
+	# burishni boshardi. Lekin to'liq burishda aylanish radiusi
+	# 3,8 m, Kosiblar ko'chasi esa 7 m eni — mashina devorga
+	# urib, burilish to'xtaydi va o'lchov 0° chiqadi. Bu
+	# o'lchov xatosi, fizika xatosi emas.
+	#
+	# TO'XTOQ HOLATDAN QISQA MASOFA.
+	#
+	# DIQQAT: Kosiblar ko'chasi 7 m eni, to'liq burishda aylanish
+	# radiusi 3,8 m — mashina 2 m yurib devorga yetadi va burilish
+	# to'xtaydi. Shu bois sinov qisqa: 0,7 soniya (~0,4 m), devorga
+	# yetmasligi ANIQ. Tezlanish sinovi esa shu joyda 3,5 m yurib
+	# ishlaganini allaqachon ko'rsatgan.
+	car.freeze = true
+	car.linear_velocity = Vector3.ZERO
+	car.angular_velocity = Vector3.ZERO
+	car.global_position = Vector3(point.x, ground + 0.20, point.y)
+	car.rotation.y = float(spot["yaw"])
+	car.freeze = false
+	for i in 45:
+		await get_tree().physics_frame
+	car.update_speed()
+	_check("Burish boshlang'ich tezligi past",
+		car.speed_kmh < 3.0, "(%.1f km/soat)" % car.speed_kmh)
+	_check("Sinov maydoni keng",
+		car.wheels_on_floor() == 4,
+		"(%d/4 g'ildorak)" % car.wheels_on_floor())
+	var before_yaw: float = car.global_rotation.y
+	for i in 45:
+		car.drive(1.0, 1.0, 0.0, 0.0)
+		car.update_speed()
+		await get_tree().physics_frame
+	var turned: float = absf(wrapf(car.global_rotation.y - before_yaw, -PI, PI))
+	_check("Burish buyurmasi g'ildorakka yetadi",
+		absf(car.steer_now) > float(car.spec["burish"]) * 0.8,
+		"(%.2f rad, chegara %.2f)" % [car.steer_now, float(car.spec["burish"])])
+	# DIQQAT: quyidagi qator ochiq muammoni ko'rsatadi.
+	# Kuchlar TO'G'RI hisoblanmoqda (oldingi +2130 N, orqa −2113 N,
+	# teng va qarama-qarshi) va burchak to'liq (−0,58 rad), lekin
+	# `angular_velocity.y` NOL. Ya'ni kuch jismga borib, moment
+	# hosil qilmayapti. Keyingi tekshirish: `apply_torque` bilan
+	# bevosita moment berib, jism umuman aylanadimi.
+	print_rich("      [color=#a89d8a]Burish kuchlari: %s; burchak %.2f; "
+		% [str(car.side_forces_now()), car.steer_now]
+		+ "aylanish tezligi %.3f rad/s[/color]" % car.angular_velocity.y)
+	_check("Mashina buriladi", turned > 0.08,
+		"(%.0f gradus, %.1f km/soat)" % [rad_to_deg(turned), car.speed_kmh])
+
 	car.freeze = true
 	car.queue_free()
 

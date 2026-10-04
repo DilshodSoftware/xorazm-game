@@ -90,24 +90,24 @@ func add_box(centre: Vector3, size: Vector3, colour: Color,
 	var f: Vector3 = at.call(1, 1, 1)      # o'ng-past-orqa
 	var h2: Vector3 = at.call(-1, 1, 1)    # chap-past-orqa
 
-	_face(a, c, e, g, -b.z, colour, collision)      # old
-	_face(d, f, h2, b2, b.z, colour, collision)     # orqa
-	_face(a, b2, d, c, -b.y, colour, collision)     # yuqori
-	_face(g, e, f, h2, b.y, colour, collision)      # past
-	_face(c, d, f, e, b.x, colour, collision)      # o'ng
-	_face(a, g, h2, b2, -b.x, colour, collision)    # chap
+	add_face(a, c, e, g, -b.z, colour, collision)      # old
+	add_face(d, f, h2, b2, b.z, colour, collision)     # orqa
+	add_face(a, b2, d, c, -b.y, colour, collision)     # yuqori
+	add_face(g, e, f, h2, b.y, colour, collision)      # past
+	add_face(c, d, f, e, b.x, colour, collision)      # o'ng
+	add_face(a, g, h2, b2, -b.x, colour, collision)    # chap
 
 
 ## Yuzani chizadi — burilish TASHQARIGA qarab bo'lishini o'zi
-## tekshiradi.
+## tekshiradi. Barcha shakllar shundan foydalanadi.
 ##
 ## DIQQAT: bu qat'iy tekshiruv chiqarmasligimiz uchun muhim. Avval
 ## burchaklar qo'lda ketma-ket yozilgan edi va 6 yuzadan ikkitasi
 ## o'ziga o'ralgan "bowtie" bo'lib chiqardi (natija: noto'g'ri
 ## yoritilish va geometriya buzilishi). Endi tartibni funksiya
 ## o'zi to'g'rilaydi — yangi yuz qo'shsak ham xato chiqmaydi.
-func _face(a: Vector3, b: Vector3, c: Vector3, d: Vector3,
-		outward: Vector3, colour: Color, collision: bool) -> void:
+func add_face(a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+		outward: Vector3, colour: Color, collision: bool = true) -> void:
 	var normal := (b - a).cross(c - a)
 	if normal.dot(outward) < 0.0:
 		add_quad(a, d, c, b, colour, outward, collision)
@@ -221,10 +221,10 @@ func add_plate(from: Vector2, to: Vector2, y: float, thickness: float,
 	add_quad(a_in + drop, b_in + drop, b_out + drop, a_out + drop,
 		colour, -Vector3.UP, collision)
 	# Yon devorlar — qalinlik ko'rinadi
-	_face(a_out, b_out, b_out + drop, a_out + drop, -n, colour, collision)
-	_face(b_in, a_in, a_in + drop, b_in + drop, n, colour, collision)
-	_face(b_out, b_in, b_in + drop, b_out + drop, b - a, colour, collision)
-	_face(a_in, a_out, a_out + drop, a_in + drop, a - b, colour, collision)
+	add_face(a_out, b_out, b_out + drop, a_out + drop, -n, colour, collision)
+	add_face(b_in, a_in, a_in + drop, b_in + drop, n, colour, collision)
+	add_face(b_out, b_in, b_in + drop, b_out + drop, b - a, colour, collision)
+	add_face(a_in, a_out, a_out + drop, a_in + drop, a - b, colour, collision)
 
 
 # ------------------------------------------------------------------ Natija
@@ -251,22 +251,39 @@ func build_mesh() -> ArrayMesh:
 ##   * Vertex tartibi xatosi butun geometriyani ko'rinmay qoldiradi;
 ##     3-bosqichda yo'l chiziqlari aynan shuning uchun butun yo'lda
 ##     ko'rinmagan edi. Cull o'chirilsa, bu xila kamroq bo'ladi.
-func commit(parent: Node3D, node_name: String,
-		roughness: float = 0.92) -> MeshInstance3D:
+## Mesh tugunini yaratadi va materialni qo'yadi.
+##
+## DIQQAT: materialni qo'yish SHART. `MeshInstance3D` ni qo'lda
+## yaratib, faqat `mesh` qo'yilsa, standart material ishlatiladi —
+## u vertex ranglarini YO'Q qiladi (oq ko'rinadi) va orqa yuzalarni
+## cull qiladi (ichkarisi ko'rinib qoladi). Mashinada bu aniq
+## natija berdi: kuzov quyoshdan oq, pastki qismi qum rangida
+## yoritilgan (pastdan yorituvchi to'ldiruvchi nur ichkariga
+## tushib qolgan).
+##
+## [param cast_shadow] — soya berish. Yo'llar va uylar uchun
+## `false` (soya katta va foydasiz), mashinalar uchun `true`
+## (mashina yonida yotgan soya uning yerga tegganini ko'rsatadi).
+## [param paint] — bo'yalgan metal: biroz yaltiroq. Xatchopning
+## kuzovi ham bo'yalgan, lekin u shundan ancha farq qilmaydi.
+func commit(parent: Node3D, node_name: String, roughness: float = 0.92,
+		cast_shadow: bool = false, paint: bool = false) -> MeshInstance3D:
 	if is_empty():
 		return null
 
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = roughness
-	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	mat.specular_mode = BaseMaterial3D.SPECULAR_SCHLICK_GGX if paint \
+		else BaseMaterial3D.SPECULAR_DISABLED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 	var node := MeshInstance3D.new()
 	node.name = node_name
 	node.mesh = build_mesh()
 	node.material_override = mat
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
+		if cast_shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
 

@@ -277,6 +277,18 @@ func _parse_cli() -> void:
 		if args[i] == "--inspect" and i + 1 < args.size():
 			_inspect(args[i + 1])
 			return
+		if args[i] == "--cars" and i + 1 < args.size():
+			_preview_cars(args[i + 1], args[i + 2] if i + 2 < args.size() else "")
+			return
+		if args[i] == "--car" and i + 2 < args.size():
+			_preview_car(args[i + 1], args[i + 2],
+				args[i + 3] if i + 3 < args.size() else "")
+			return
+		if args[i] == "--test-vehicles":
+			var vehicle_test := VehicleSelfTest.new()
+			vehicle_test.host = self
+			add_child(vehicle_test)
+			return
 		if args[i] == "--test-mesh":
 			var mesh_test := MeshSelfTest.new()
 			add_child(mesh_test)
@@ -305,6 +317,89 @@ func _parse_cli() -> void:
 			terrain_test.host = self
 			add_child(terrain_test)
 			return
+
+
+## Barcha mashina modellari bir qatorga qo'yilib suratga olinadi.
+##     godot --path . -- --cars /tmp/mashinalar.png
+##     godot --path . -- --cars /tmp/orqa.png orqa
+##
+## Nima uchun alohida rejim: protsedural kuzov faqat ko'z bilan
+## tekshiriladi. O'lchamlar to'g'ri, lekin siluet noto'g'ri bo'lsa
+## (masalan shift oynasi baland yoki baland emas) — testlar buni
+## ushlaydi, lekin "mashina deb o'ylayotgan" narsani faqat rasmda
+## ko'rish mumkin. Shu uchun har bir model yonidan (profil) va
+## oldindan (3/4) ko'rsatiladi.
+##
+## Ikkinchi argument — qaysi tomondan: "yoni" (sukut bo'lgani) yoki
+## "oldi".
+func _preview_cars(path: String, view: String) -> void:
+	var pad := CarPreview.find_pad()
+	var row := CarPreview.build_row(self, pad)
+	if row.is_empty():
+		print_rich("[color=#c8452f]Mashinalar qurilmadi[/color]")
+		get_tree().quit(2)
+		return
+
+	var front: bool = view == "oldi"
+	var cam: Camera3D = player.rig.camera
+	if cam:
+		cam.far = 300.0
+		cam.fov = 66.0
+	# Qator markazi — kamera shunga QARAB qarashi SHART. Avval kamera
+	# qatorning yonidan o'tkazilib, "nishon" esa o'sha yon edi:
+	# natijada mashinalar ko'rish maydonidan tashqarida qoldi.
+	var span := 0.0
+	for spec: Dictionary in CarSpecs.all():
+		span += float(spec["uzunlik"]) + CarPreview.GAP
+	var centre := pad + Vector3(span * 0.5 - CarPreview.GAP * 0.5, 0.0, 0.0)
+	var eye: Vector3 = centre + (Vector3(15.0, 0.0, -17.0) if front
+		else Vector3(0.0, 0.0, -16.0))
+	var target: Vector3 = centre
+	var direction: Vector3 = target - eye
+	var yaw: float = rad_to_deg(atan2(-direction.x, -direction.z))
+	var height: float = 1.9 if front else 2.4
+	var look := Vector3(eye.x, TerrainGen.height_at(eye.x, eye.z) + height, eye.z)
+	player.teleport(look, yaw, -5.0 if not front else -8.0)
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(look, yaw, -5.0 if not front else -8.0)
+	await _settle(2)
+	print_rich("[color=#7fbf6a]Modellar:[/color] %d ta, ko'rinish: %s, pad (%.0f, %.0f)" % [
+		row.size(), "oldi" if front else "yoni", pad.x, pad.z])
+	_save_shot(path)
+
+
+## Bitta modelni 7 metrdan ko'rish — siluetni tekshirish uchun.
+##     godot --path . -- --car spark /tmp/spark.png
+##     godot --path . -- --car marshrutka /tmp/m.png orqa
+func _preview_car(model: String, path: String, view: String = "") -> void:
+	var pad := CarPreview.find_pad()
+	var spec := CarSpecs.find(model)
+	CarPreview.build_one(self, pad, model, CarPreview.pick_colour(spec))
+	var rear: bool = view == "orqa"
+	# 3/4 ko'rinish: yon profil va oldingi yuzaning egri chizig'i bir
+	# vaqtda ko'rinadi — siluetni tekshirish uchun eng maqul burchak
+	var offset := Vector3(4.6, 0.0, -4.2)
+	if rear:
+		offset = Vector3(-4.6, 0.0, 4.2)
+	if view == "yoni":
+		offset = Vector3(0.0, 0.0, -5.6)
+	var eye: Vector3 = pad + offset
+	var target: Vector3 = pad + Vector3(0.0, float(spec["balandlik"]) * 0.45, 0.0)
+	var direction: Vector3 = target - eye
+	var yaw: float = rad_to_deg(atan2(-direction.x, -direction.z))
+	var cam: Camera3D = player.rig.camera
+	if cam:
+		cam.far = 120.0
+		cam.fov = 58.0
+	var look := Vector3(eye.x, TerrainGen.height_at(eye.x, eye.z) + 1.05, eye.z)
+	player.teleport(look, yaw, -8.0)
+	await _settle(CAPTURE_FRAMES)
+	player.teleport(look, yaw, -8.0)
+	await _settle(2)
+	print_rich("[color=#7fbf6a]Model:[/color] %s (%.2f × %.2f × %.2f m)" % [
+		Lang.txt(String(spec["nom"])), float(spec["uzunlik"]),
+		float(spec["kenglik"]), float(spec["balandlik"])])
+	_save_shot(path)
 
 
 ## Eshikning oldidan surat — "open" yoki "yopiq".
